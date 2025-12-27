@@ -13,11 +13,11 @@ return new class extends Migration
     {
         Schema::create('t_mumineen_sabeel', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('family_id')->nullable();
-            $table->integer('year')->nullable();
-            $table->string('sabeel')->nullable();
+            $table->unsignedBigInteger('family_id');
+            $table->integer('year');
+            $table->integer('sabeel');
 
-            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->unsignedBigInteger('updated_by');
             $table->timestamps();
         });
     }

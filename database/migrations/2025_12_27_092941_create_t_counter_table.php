@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('t_counter', function (Blueprint $table) {
             $table->id();
-            $table->string('prefix')->nullable();
-            $table->integer('number')->default(0);
-            $table->string('postfix')->nullable();
+            $table->string('prefix');
+            $table->integer('number');
+            $table->string('postfix');
             $table->timestamps();
         });
     }

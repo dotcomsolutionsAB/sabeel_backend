@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('mobile')->nullable()->after('email');
 
             // role was enum(5) but no values shared -> string for now
-            $table->string('role')->nullable()->after('mobile');
+            $table->enum('role', ['user', 'admin'])->after('mobile');
 
             $table->string('access')->nullable()->after('role');
 

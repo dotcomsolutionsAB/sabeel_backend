@@ -16,14 +16,13 @@ return new class extends Migration
             $table->unsignedBigInteger('family_id')->nullable();
             $table->unsignedBigInteger('establishment_id')->nullable();
 
-            $table->string('receipt_no')->nullable();
-            $table->date('date')->nullable();
+            $table->string('receipt_no');
+            $table->date('date');
 
-            $table->string('name')->nullable();
+            $table->string('name');
             $table->string('its')->nullable();
 
-            // was enum(6) / enum(9)
-            $table->string('mode')->nullable();
+            $table->enum('mode', ['cash', 'cheque', 'neft']);
 
             $table->string('transaction_no')->nullable();
             $table->date('transaction_date')->nullable();
@@ -34,12 +33,12 @@ return new class extends Migration
             $table->string('ifsc')->nullable();
 
             $table->decimal('amount', 12, 2)->default(0);
-            $table->integer('year')->nullable();
+            $table->integer('year');
 
             $table->text('comment')->nullable();
 
-            $table->string('status')->nullable();
-            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->enum('status', ['active', 'cancelled']);
+            $table->unsignedBigInteger('updated_by');
             $table->timestamps();
 
             $table->unique('receipt_no');

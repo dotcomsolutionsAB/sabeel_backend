@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::create('t_establishment_sabeel', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('establishment_id');
-            $table->integer('year')->nullable();
-            $table->string('sabeel')->nullable();
-            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->integer('year');
+            $table->unsignedBigInteger('sabeel');
+            $table->unsignedBigInteger('updated_by');
             $table->timestamps();
         });
     }

@@ -13,30 +13,32 @@ return new class extends Migration
     {
         Schema::create('t_mumineen', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('family_id')->nullable();
+            $table->unsignedBigInteger('family_id');
 
             // was enum(3) / enum(1) / enum(8) etc in your SQL (values not provided)
-            $table->string('hof_type')->nullable();
+            $table->enum('hof_type', ['HOF', 'FM']);
 
-            $table->string('its')->nullable();
-            $table->string('hof_its')->nullable();
-            $table->string('family_its')->nullable();
+            $table->string('its');
+            $table->string('hof_its');
+            $table->string('family_its');
 
-            $table->string('name')->nullable();
+            $table->string('name');
             $table->string('sector')->nullable();
             $table->string('sub_sector')->nullable();
 
             $table->string('mobile')->nullable();
             $table->string('email')->nullable();
 
-            $table->string('gender')->nullable();
+            $table->enum('gender', ['male', 'female']);
             $table->integer('age')->nullable();
 
-            $table->string('status')->nullable();
+            $table->enum('status', ['active', 'closed']);
             $table->timestamps();
 
             // ITS normally unique
             $table->unique('its');
+            // ITS normally unique
+            $table->unique('family_id');
         });
     }
 

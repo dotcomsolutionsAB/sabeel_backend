@@ -13,16 +13,17 @@ return new class extends Migration
     {
         Schema::create('t_establishment', function (Blueprint $table) {
             $table->id();
-            $table->string('establishment_no')->nullable();
-            $table->string('name')->nullable();
-            $table->text('address')->nullable();
+            $table->string('establishment_no');
+            $table->string('name');
+            $table->text('address');
 
-            // was enum(8) + enum(14) in your SQL, values not provided
-            $table->string('status')->nullable();
-            $table->string('type')->nullable();
+            $table->enum('status', ['active', 'closed']);
+            $table->enum('type', ['business', 'manufacturer']);
 
-            $table->text('remarks')->nullable();
+            $table->longText('remarks')->nullable();
             $table->timestamps();
+
+            $table->unique('establishment_no');
         });
     }
 
