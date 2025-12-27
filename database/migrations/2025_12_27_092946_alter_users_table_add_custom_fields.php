@@ -21,9 +21,6 @@ return new class extends Migration
             $table->enum('role', ['user', 'admin'])->after('mobile');
 
             $table->string('access')->nullable()->after('role');
-
-            // email should be unique in most apps
-            $table->unique('email');
         });
     }
 
