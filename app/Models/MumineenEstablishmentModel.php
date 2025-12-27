@@ -1,0 +1,41 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class MumineenEstablishmentModel extends Model
+{
+    //
+    protected $table = 't_mumineen_establishment';
+
+    protected $fillable = [
+        'family_id',
+        'its',
+        'establishment_id',
+        'updated_by',
+    ];
+
+    protected $casts = [
+        'family_id'        => 'integer',
+        'establishment_id' => 'integer',
+        'updated_by'       => 'integer',
+    ];
+
+    public function establishment(): BelongsTo
+    {
+        return $this->belongsTo(Establishment::class, 'establishment_id');
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    // Link to mumineen through ITS (optional helpful)
+    public function mumineen(): BelongsTo
+    {
+        return $this->belongsTo(Mumineen::class, 'its', 'its');
+    }
+}

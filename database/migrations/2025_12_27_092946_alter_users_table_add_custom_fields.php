@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             //
             // Only add if not already existing in your users table
-            $table->string('username')->nullable()->after('id');
+            $table->string('username')->nullable()->after('name');
             $table->string('mobile')->nullable()->after('email');
 
             // role was enum(5) but no values shared -> string for now
