@@ -1,0 +1,56 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('t_receipts', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('family_id')->nullable();
+            $table->unsignedBigInteger('establishment_id')->nullable();
+
+            $table->string('receipt_no')->nullable();
+            $table->date('date')->nullable();
+
+            $table->string('name')->nullable();
+            $table->string('its')->nullable();
+
+            // was enum(6) / enum(9)
+            $table->string('mode')->nullable();
+
+            $table->string('transaction_no')->nullable();
+            $table->date('transaction_date')->nullable();
+
+            $table->string('bank')->nullable();
+            $table->string('cheque_no')->nullable();
+            $table->date('cheque_date')->nullable();
+            $table->string('ifsc')->nullable();
+
+            $table->decimal('amount', 12, 2)->default(0);
+            $table->integer('year')->nullable();
+
+            $table->text('comment')->nullable();
+
+            $table->string('status')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+
+            $table->unique('receipt_no');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('t_receipts');
+    }
+};
