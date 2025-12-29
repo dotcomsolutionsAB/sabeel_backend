@@ -238,7 +238,7 @@ class MumineenController extends Controller
         if (empty($familyIds)) return [];
 
         // Family sabeel entries
-        $ms = MumineenSabeel::whereIn('family_id', $familyIds)
+        $ms = MumineenSabeelModel::whereIn('family_id', $familyIds)
             ->get()
             ->groupBy('family_id');
 
