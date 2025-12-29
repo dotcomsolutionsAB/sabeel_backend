@@ -13,7 +13,7 @@ use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
-use App\Models\Receipt;
+use App\Models\ReceiptModel;
 use App\Models\YearModel;
 
 class MumineenSabeelController extends Controller
