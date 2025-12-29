@@ -18,9 +18,6 @@ class MumineenController extends Controller
 {
     //
     use ApiResponse;
-
-    use ApiResponse;
-
     /**
      * Create HOF Mumineen
      * Defaults:
@@ -174,15 +171,15 @@ class MumineenController extends Controller
 
     private function resolveYears(): array
     {
-        $currentYear = (int) Year::where('is_current', 1)->value('year');
+        $currentYear = (int) YearModel::where('is_current', 1)->value('year');
         if (!$currentYear) {
-            $currentYear = (int) Year::max('year');
+            $currentYear = (int) YearModel::max('year');
         }
         if (!$currentYear) {
             $currentYear = (int) date('Y');
         }
 
-        $yearsList = Year::orderBy('year','desc')->pluck('year')->toArray();
+        $yearsList = YearModel::orderBy('year','desc')->pluck('year')->toArray();
         if (empty($yearsList)) {
             $yearsList = [$currentYear, $currentYear - 1, $currentYear - 2];
         }
