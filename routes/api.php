@@ -14,7 +14,7 @@ Route::post('/register', [UserController::class, 'create']);
 
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::middleware('auth:sanctum', 'role:admin,sales,staff,dispatch')->group(function () {
+Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
     Route::get('/dashboard', [UserController::class, 'summary']);
     // users route
