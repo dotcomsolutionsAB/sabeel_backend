@@ -29,7 +29,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     });
 
     // mumineen route
-    Route::prefix('mumineen')->group(function () {
+    Route::prefix('family')->group(function () {
         Route::post('/create', [MumineenController::class, 'create']);
         Route::post('/retrieve/{id?}', [MumineenController::class, 'fetch']);
         Route::post('/update/{id}', [MumineenController::class, 'edit']);

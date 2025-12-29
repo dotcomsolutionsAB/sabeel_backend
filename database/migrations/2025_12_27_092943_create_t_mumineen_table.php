@@ -19,8 +19,8 @@ return new class extends Migration
             $table->enum('hof_type', ['HOF', 'FM']);
 
             $table->string('its');
-            $table->string('hof_its');
-            $table->string('family_its');
+            $table->string('hof_its')->nullable();
+            $table->string('family_its')->nullable();
 
             $table->string('name');
             $table->string('sector')->nullable();

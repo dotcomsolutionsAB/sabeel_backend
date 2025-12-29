@@ -1,10 +1,384 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
+use App\Models\MumineenModel;
+use App\Models\MumineenSabeel;
+use App\Models\MumineenEstablishment;
+use App\Models\EstablishmentSabeel;
+use App\Models\Receipt;
+use App\Models\Year;
 
 class MumineenController extends Controller
 {
     //
+    use ApiResponse;
+
+    use ApiResponse;
+
+    /**
+     * Create HOF Mumineen
+     * Defaults:
+     * family_id = auto 10 digit unique
+     * hof_type = HOF
+     * hof_its = NULL
+     * family_its = NULL
+     * age = NULL
+     * status = active
+     */
+    public function create(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'its'        => 'required|string|max:255|unique:t_mumineen,its',
+                'name'       => 'required|string|max:255',
+                'gender'     => 'required|in:male,female',
+
+                'sector'     => 'nullable|string|max:255',
+                'sub_sector' => 'nullable|string|max:255',
+                'mobile'     => 'nullable|string|max:255',
+                'email'      => 'nullable|email|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $familyId = $this->generateUniqueFamilyId();
+
+            $row = MumineenModel::create([
+                'family_id'  => $familyId,
+                'hof_type'   => 'HOF',
+
+                'its'        => $request->its,
+                'hof_its'    => null,
+                'family_its' => null,
+
+                'name'       => $request->name,
+                'sector'     => $request->sector ?? null,
+                'sub_sector' => $request->sub_sector ?? null,
+
+                'mobile'     => $request->mobile ?? null,
+                'email'      => $request->email ?? null,
+
+                'gender'     => $request->gender,
+                'age'        => null,
+
+                'status'     => 'active',
+            ]);
+
+            return $this->success('Data saved successfully', $row, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Mumineen create failed');
+        }
+    }
+
+    /**
+     * Fetch list/single
+     * POST body:
+     * {
+     *   "search": "",
+     *   "sector": "",
+     *   "filter": "due|prev_due|new_takhmeen_pending|not_tagged|service",
+     *   "limit": 10,
+     *   "offset": 0
+     * }
+     */
+    public function fetch(Request $request, $id = null)
+    {
+        try {
+            [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
+
+            // SINGLE -> still return array (consistent with your sample)
+            if ($id !== null) {
+                $m = MumineenModel::where('hof_type', 'HOF')->find($id);
+
+                if (!$m) {
+                    return $this->error('Mumineen not found.', 404);
+                }
+
+                $data = $this->buildPayload(collect([$m]), $currentYear, $prevYear, $yearsList);
+
+                return $this->success('Data fetched successfully', $data, 200);
+            }
+
+            $limit  = max(1, (int) $request->input('limit', 10));
+            $offset = max(0, (int) $request->input('offset', 0));
+            $search = trim((string) $request->input('search', ''));
+            $sector = trim((string) $request->input('sector', ''));
+            $filter = trim((string) $request->input('filter', ''));
+
+            $q = MumineenModel::query()
+                ->where('hof_type', 'HOF')
+                ->select('id','family_id','its','name','sector','mobile','email')
+                ->orderBy('id', 'desc');
+
+            // search in name, its, sector, and also family member its numbers
+            if ($search !== '') {
+                $q->where(function ($w) use ($search) {
+                    $w->where('name', 'like', "%{$search}%")
+                      ->orWhere('its', 'like', "%{$search}%")
+                      ->orWhere('sector', 'like', "%{$search}%")
+                      ->orWhereIn('family_id', function($sub) use ($search) {
+                          $sub->from('t_mumineen')
+                              ->select('family_id')
+                              ->where('its', 'like', "%{$search}%");
+                      });
+                });
+            }
+
+            if ($sector !== '') {
+                $q->where('sector', $sector);
+            }
+
+            if ($filter !== '') {
+                $q = $this->applyFilter($q, $filter, $currentYear, $prevYear);
+            }
+
+            $total = (clone $q)->count();
+
+            $rows = $q->skip($offset)->take($limit)->get();
+
+            $data = $this->buildPayload($rows, $currentYear, $prevYear, $yearsList);
+
+            return $this->success('Data fetched successfully', $data, 200, [
+                'pagination' => [
+                    'limit'  => $limit,
+                    'offset' => $offset,
+                    'count'  => count($data),
+                    'total'  => $total,
+                ]
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Mumineen fetch failed');
+        }
+    }
+
+    /* ----------------- Helpers ----------------- */
+
+    private function generateUniqueFamilyId(): int
+    {
+        do {
+            $familyId = random_int(1000000000, 9999999999);
+        } while (MumineenModel::where('family_id', $familyId)->exists());
+
+        return $familyId;
+    }
+
+    private function resolveYears(): array
+    {
+        $currentYear = (int) Year::where('is_current', 1)->value('year');
+        if (!$currentYear) {
+            $currentYear = (int) Year::max('year');
+        }
+        if (!$currentYear) {
+            $currentYear = (int) date('Y');
+        }
+
+        $yearsList = Year::orderBy('year','desc')->pluck('year')->toArray();
+        if (empty($yearsList)) {
+            $yearsList = [$currentYear, $currentYear - 1, $currentYear - 2];
+        }
+
+        $prevYear = collect($yearsList)->filter(fn($y) => $y < $currentYear)->first();
+        $prevYear = $prevYear ? (int)$prevYear : ($currentYear - 1);
+
+        return [$currentYear, $prevYear, $yearsList];
+    }
+
+    private function applyFilter($q, string $filter, int $currentYear, int $prevYear)
+    {
+        if ($filter === 'not_tagged') {
+            return $q->whereNotIn('family_id', function($sub){
+                $sub->from('t_mumineen_establishment')->select('family_id');
+            });
+        }
+
+        if ($filter === 'service') {
+            return $q->whereIn('family_id', function($sub){
+                $sub->from('t_mumineen_establishment')->select('family_id');
+            });
+        }
+
+        if ($filter === 'new_takhmeen_pending') {
+            return $q->whereNotIn('family_id', function($sub) use ($currentYear){
+                $sub->from('t_mumineen_sabeel')
+                    ->select('family_id')
+                    ->where('year', $currentYear);
+            });
+        }
+
+        if ($filter === 'due' || $filter === 'prev_due') {
+            $year = ($filter === 'due') ? $currentYear : $prevYear;
+
+            return $q->whereIn('family_id', function($sub) use ($year) {
+                $sub->from('t_mumineen_sabeel as ms')
+                    ->select('ms.family_id')
+                    ->leftJoin('t_receipts as r', function($j) use ($year) {
+                        $j->on('r.family_id','=','ms.family_id')
+                          ->where('r.year','=',$year)
+                          ->where('r.status','=','active');
+                    })
+                    ->where('ms.year', $year)
+                    ->groupBy('ms.family_id','ms.sabeel')
+                    ->havingRaw('(ms.sabeel - COALESCE(SUM(r.amount),0)) > 0');
+            });
+        }
+
+        return $q;
+    }
+
+    private function buildPayload($rows, int $currentYear, int $prevYear, array $yearsList): array
+    {
+        $familyIds = collect($rows)->pluck('family_id')->filter()->unique()->values()->all();
+        if (empty($familyIds)) return [];
+
+        // Family sabeel entries
+        $ms = MumineenSabeel::whereIn('family_id', $familyIds)
+            ->get()
+            ->groupBy('family_id');
+
+        // Family receipts paid by year
+        $familyPaid = Receipt::select('family_id','year', DB::raw('SUM(amount) as paid'))
+            ->whereIn('family_id', $familyIds)
+            ->where('status','active')
+            ->groupBy('family_id','year')
+            ->get()
+            ->groupBy('family_id');
+
+        // Establishment links + names
+        $links = MumineenEstablishment::with('establishment:id,name')
+            ->whereIn('family_id', $familyIds)
+            ->get()
+            ->groupBy('family_id');
+
+        $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
+
+        // Establishment sabeel
+        $es = empty($estIds) ? collect() : EstablishmentSabeel::whereIn('establishment_id', $estIds)
+            ->get()
+            ->groupBy('establishment_id');
+
+        // Establishment receipts paid by year
+        $estPaid = empty($estIds) ? collect() : Receipt::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
+            ->whereIn('establishment_id', $estIds)
+            ->where('status','active')
+            ->groupBy('establishment_id','year')
+            ->get()
+            ->groupBy('establishment_id');
+
+        $out = [];
+
+        foreach ($rows as $m) {
+
+            // sabeel_details year wise
+            $sabeelDetails = [];
+            $curSabeel = 0; $curDue = 0; $prevDue = 0;
+
+            foreach ($yearsList as $yr) {
+                $sabeelAmt = (int) optional($ms->get($m->family_id))
+                    ?->firstWhere('year', $yr)
+                    ?->sabeel ?? 0;
+
+                $paid = (float) optional($familyPaid->get($m->family_id))
+                    ?->firstWhere('year', $yr)
+                    ?->paid ?? 0;
+
+                $due = max(0, $sabeelAmt - $paid);
+
+                $sabeelDetails[] = [
+                    'year'   => $this->yearLabel((int)$yr),
+                    'sabeel' => (string)$sabeelAmt,
+                    'due'    => (string)$due,
+                ];
+
+                if ((int)$yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
+                if ((int)$yr === $prevYear) { $prevDue = $due; }
+            }
+
+            // establishment_details
+            $estDetails = [];
+            $estCurSabeelSum = 0; $estCurDueSum = 0; $estPrevDueSum = 0;
+
+            $familyLinks = $links->get($m->family_id) ?? collect();
+
+            foreach ($familyLinks as $lnk) {
+                $estId = (int) $lnk->establishment_id;
+                $estName = optional($lnk->establishment)->name ?? '';
+
+                $estSabeelCur = (int) optional($es->get($estId))
+                    ?->firstWhere('year', $currentYear)
+                    ?->sabeel ?? 0;
+
+                $estPaidCur = (float) optional($estPaid->get($estId))
+                    ?->firstWhere('year', $currentYear)
+                    ?->paid ?? 0;
+
+                $estDueCur = max(0, $estSabeelCur - $estPaidCur);
+
+                $estSabeelPrev = (int) optional($es->get($estId))
+                    ?->firstWhere('year', $prevYear)
+                    ?->sabeel ?? 0;
+
+                $estPaidPrev = (float) optional($estPaid->get($estId))
+                    ?->firstWhere('year', $prevYear)
+                    ?->paid ?? 0;
+
+                $estDuePrev = max(0, $estSabeelPrev - $estPaidPrev);
+
+                $estDetails[] = [
+                    'establishment_id' => (string)$estId,
+                    'name'             => (string)$estName,
+                    'due'              => (string)$estDueCur,
+                ];
+
+                $estCurSabeelSum += $estSabeelCur;
+                $estCurDueSum    += $estDueCur;
+                $estPrevDueSum   += $estDuePrev;
+            }
+
+            $out[] = [
+                'id'        => (string) $m->id,
+                'family_id' => (string) $m->family_id,
+                'url'       => "https://talabulilm.com/mumin_images/{$m->its}.png",
+
+                'name'      => (string) $m->name,
+                'its'       => (string) $m->its,
+                'sector'    => (string) ($m->sector ?? ''),
+                'mobile'    => (string) ($m->mobile ?? ''),
+                'email'     => (string) ($m->email ?? ''),
+
+                'sabeel' => [
+                    'sabeel'   => (string) $curSabeel,
+                    'due'      => (string) $curDue,
+                    'prev_due' => (string) $prevDue,
+                ],
+
+                'establishment' => [
+                    'sabeel'   => (string) $estCurSabeelSum,
+                    'due'      => (string) $estCurDueSum,
+                    'prev_due' => (string) $estPrevDueSum,
+                ],
+
+                'sabeel_details' => $sabeelDetails,
+                'establishment_details' => $estDetails,
+            ];
+        }
+
+        return $out;
+    }
+
+    private function yearLabel(int $year): string
+    {
+        $next = substr((string)($year + 1), -2);
+        return "{$year}-{$next}";
+    }
+
 }
