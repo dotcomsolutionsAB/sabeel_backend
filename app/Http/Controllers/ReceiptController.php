@@ -2,9 +2,380 @@
 
 namespace App\Http\Controllers;
 
+use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+
+use App\Models\ReceiptModel;
+use App\Models\MumineenModel;
+use App\Models\EstablishmentModel;
+use App\Models\YearModel;
+use App\Models\CounterModel;
 
 class ReceiptController extends Controller
 {
     //
+    use ApiResponse;
+
+    /**
+     * CREATE
+     * POST /receipts/create
+     * Body:
+     * {
+     *   "type":"family|establishment",
+     *   "family_id": "",
+     *   "establishment_id": "",
+     *   "year": 2025,
+     *   "mode": "cash|cheque|neft",
+     *   "amount": 2100,
+     *   "remarks": "",
+     *   "trans_id": "",
+     *   "trans_date": "YYYY-MM-DD",
+     *   "bank": "",
+     *   "cheque_no": "",
+     *   "cheque_date": "YYYY-MM-DD",
+     *   "ifsc": ""
+     * }
+     */
+    public function create(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'type' => 'required|in:family,establishment',
+
+                'family_id'        => 'required_if:type,family|nullable|integer',
+                'establishment_id' => 'required_if:type,establishment|nullable|integer',
+
+                'year'   => 'required|integer|min:2000|max:2100',
+                'mode'   => 'required|in:cash,cheque,neft',
+                'amount' => 'required|numeric|min:0',
+
+                'remarks'    => 'nullable|string',
+
+                'trans_id'   => 'nullable|string|max:255',
+                'trans_date' => 'nullable|date',
+
+                'bank'       => 'nullable|string|max:255',
+                'cheque_no'  => 'nullable|string|max:255',
+                'cheque_date'=> 'nullable|date',
+                'ifsc'       => 'nullable|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            // Validate family / establishment exists and derive name/its
+            $type = $request->type;
+
+            $familyId = null;
+            $estId = null;
+            $name = null;
+            $its = null;
+
+            if ($type === 'family') {
+                $familyId = (int) $request->family_id;
+
+                $hof = MumineenModel::where('family_id', $familyId)
+                    ->where('hof_type', 'HOF')
+                    ->first();
+
+                if (!$hof) {
+                    return $this->error('Invalid family_id. Family not found.', 404);
+                }
+
+                $name = $hof->name;
+                $its  = $hof->its;
+            } else {
+                $estId = (int) $request->establishment_id;
+
+                $est = EstablishmentModel::find($estId);
+                if (!$est) {
+                    return $this->error('Invalid establishment_id. Establishment not found.', 404);
+                }
+
+                $name = $est->name;
+                $its  = null;
+            }
+
+            // Optional: validate year exists in t_year
+            if (Schema::hasTable('t_year')) {
+                $existsYear = YearModel::where('year', (int)$request->year)->exists();
+                if (!$existsYear) {
+                    return $this->error('Invalid year. Year not found in master.', 422);
+                }
+            }
+
+            // Generate receipt_no
+            $receiptNo = $this->nextReceiptNo(); // uses t_counter
+
+            $row = ReceiptModel::create([
+                'family_id'        => $familyId,
+                'establishment_id' => $estId,
+
+                'receipt_no' => $receiptNo,
+                'date'       => now()->toDateString(),
+
+                'name' => $name,
+                'its'  => $its,
+
+                'mode' => $request->mode,
+
+                'transaction_no'   => $request->trans_id ?? null,
+                'transaction_date' => $request->trans_date ?? null,
+
+                'bank'       => $request->bank ?? null,
+                'cheque_no'  => $request->cheque_no ?? null,
+                'cheque_date'=> $request->cheque_date ?? null,
+                'ifsc'       => $request->ifsc ?? null,
+
+                'amount' => $request->amount,
+                'year'   => (int) $request->year,
+
+                'comment' => $request->remarks ?? null,
+                'status'  => 'active',
+
+                'updated_by' => (int) Auth::id(),
+            ]);
+
+            return $this->success('Data saved successfully', $row, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt create failed');
+        }
+    }
+
+    /**
+     * FETCH
+     * POST /receipts/retrieve/{id?}
+     * Body:
+     * {
+     *   "type":"family|establishment",
+     *   "family_id": null,
+     *   "establishment_id": null,
+     *   "date_from":"YYYY-MM-DD",
+     *   "date_to":"YYYY-MM-DD",
+     *   "limit":10,
+     *   "offset":0
+     * }
+     */
+    public function fetch(Request $request, $id = null)
+    {
+        try {
+            // SINGLE
+            if ($id !== null) {
+                $r = ReceiptModel::find($id);
+                if (!$r) return $this->error('Receipt not found.', 404);
+
+                $item = $this->mapReceipt($r);
+
+                return $this->success('Data fetched successfully', [$item], 200);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'type' => 'required|in:family,establishment',
+
+                'family_id'        => 'nullable|integer',
+                'establishment_id' => 'nullable|integer',
+
+                'date_from' => 'nullable|date',
+                'date_to'   => 'nullable|date',
+
+                'limit'  => 'nullable|integer|min:1',
+                'offset' => 'nullable|integer|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $limit  = max(1, (int) $request->input('limit', 10));
+            $offset = max(0, (int) $request->input('offset', 0));
+
+            $type = $request->type;
+
+            $q = ReceiptModel::query()
+                ->where('status', 'active')
+                ->orderBy('id', 'desc');
+
+            if ($type === 'family') {
+                $q->whereNotNull('family_id');
+            } else {
+                $q->whereNotNull('establishment_id');
+            }
+
+            if ($request->filled('family_id')) {
+                $q->where('family_id', (int)$request->family_id);
+            }
+
+            if ($request->filled('establishment_id')) {
+                $q->where('establishment_id', (int)$request->establishment_id);
+            }
+
+            if ($request->filled('date_from')) {
+                $q->whereDate('date', '>=', $request->date_from);
+            }
+
+            if ($request->filled('date_to')) {
+                $q->whereDate('date', '<=', $request->date_to);
+            }
+
+            $total = (clone $q)->count();
+
+            $rows = $q->skip($offset)->take($limit)->get();
+
+            $data = $rows->map(fn($r) => $this->mapReceipt($r))->values()->all();
+
+            return $this->success('Data fetched successfully', $data, 200, [
+                'pagination' => [
+                    'limit'  => $limit,
+                    'offset' => $offset,
+                    'count'  => count($data),
+                    'total'  => $total,
+                ]
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt fetch failed');
+        }
+    }
+
+    /**
+     * UPDATE
+     * POST /receipts/update/{id}
+     * Body:
+     * {
+     *   "amount":"",
+     *   "remarks":"",
+     *   "trans_id":"",
+     *   "trans_date":"",
+     *   "bank":"",
+     *   "cheque_no":"",
+     *   "cheque_date":"",
+     *   "ifsc":""
+     * }
+     */
+    public function edit(Request $request, $id)
+    {
+        try {
+            $r = ReceiptModel::find($id);
+            if (!$r) return $this->error('Receipt not found.', 404);
+
+            $validator = Validator::make($request->all(), [
+                'amount'      => 'required|numeric|min:0',
+                'remarks'     => 'nullable|string',
+
+                'trans_id'    => 'nullable|string|max:255',
+                'trans_date'  => 'nullable|date',
+
+                'bank'        => 'nullable|string|max:255',
+                'cheque_no'   => 'nullable|string|max:255',
+                'cheque_date' => 'nullable|date',
+                'ifsc'        => 'nullable|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $r->amount = $request->amount;
+            $r->comment = $request->remarks ?? null;
+
+            $r->transaction_no = $request->trans_id ?? null;
+            $r->transaction_date = $request->trans_date ?? null;
+
+            $r->bank = $request->bank ?? null;
+            $r->cheque_no = $request->cheque_no ?? null;
+            $r->cheque_date = $request->cheque_date ?? null;
+            $r->ifsc = $request->ifsc ?? null;
+
+            $r->updated_by = (int) Auth::id();
+            $r->save();
+
+            return $this->success('Data saved successfully', $r, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt update failed');
+        }
+    }
+
+    /**
+     * DELETE (soft style by status)
+     * DELETE /receipts/delete/{id}
+     */
+    public function delete($id)
+    {
+        try {
+            $r = ReceiptModel::find($id);
+            if (!$r) return $this->error('Receipt not found.', 404);
+
+            // keep record but mark cancelled
+            $r->status = 'cancelled';
+            $r->updated_by = (int) Auth::id();
+            $r->save();
+
+            return $this->success('Data deleted successfully', [], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt delete failed');
+        }
+    }
+
+    /* ---------------- Helpers ---------------- */
+
+    private function mapReceipt(ReceiptModel $r): array
+    {
+        $type = $r->family_id ? 'family' : 'establishment';
+
+        return [
+            'id'         => (string) $r->id,
+            'receipt_no' => (string) $r->receipt_no,
+            'date'       => (string) optional($r->date)->format('Y-m-d'),
+            'year'       => (string) $r->year,
+
+            'name' => (string) ($r->name ?? ''),
+            'its'  => (string) ($r->its ?? ''),
+
+            'type'             => $type,
+            'family_id'        => $r->family_id ? (string)$r->family_id : '',
+            'establishment_id' => $r->establishment_id ? (string)$r->establishment_id : '',
+
+            'mode' => (string) $r->mode,
+
+            'trans_id'   => (string) ($r->transaction_no ?? ''),
+            'trans_date' => $r->transaction_date ? (string) $r->transaction_date->format('Y-m-d') : '',
+
+            'bank'       => (string) ($r->bank ?? ''),
+            'cheque_no'  => (string) ($r->cheque_no ?? ''),
+            'cheque_date'=> $r->cheque_date ? (string) $r->cheque_date->format('Y-m-d') : '',
+            'ifsc'       => (string) ($r->ifsc ?? ''),
+
+            'amount' => (string) $r->amount,
+        ];
+    }
+
+    /**
+     * receipt_no using t_counter row with prefix="RCP"
+     * Creates row if missing.
+     * Format: {prefix}{number}{postfix}
+     */
+    private function nextReceiptNo(): string
+    {
+        // If you don't want counter table, replace this with your own logic.
+        $counter = CounterModel::firstOrCreate(
+            ['prefix' => 'RCP'],
+            ['number' => 0, 'postfix' => '']
+        );
+
+        $counter->number = (int) $counter->number + 1;
+        $counter->save();
+
+        // Optional: pad to 6 digits
+        $num = str_pad((string)$counter->number, 6, '0', STR_PAD_LEFT);
+
+        return $counter->prefix . $num . $counter->postfix;
+    }
 }

@@ -44,7 +44,7 @@ class ReceiptModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(Establishment::class, 'establishment_id');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_id');
     }
 
     public function updatedBy(): BelongsTo
@@ -55,6 +55,6 @@ class ReceiptModel extends Model
     // Helpful for searching by ITS (optional)
     public function mumineen(): BelongsTo
     {
-        return $this->belongsTo(Mumineen::class, 'its', 'its');
+        return $this->belongsTo(MumineenModel::class, 'its', 'its');
     }
 }
