@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MumineenController;
+use App\Http\Controllers\MumineenSabeelController;
 use App\Http\Controllers\EstablishmentController;
 use App\Http\Controllers\CounterController;
 use App\Http\Controllers\ReceiptController;
@@ -34,6 +35,14 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [MumineenController::class, 'fetch']);
         Route::post('/update/{id}', [MumineenController::class, 'edit']);
         Route::delete('/delete/{id}', [MumineenController::class, 'delete']);
+    });
+
+    // mumineen-sabeel route
+    Route::prefix('family_details/{family_id}')->group(function () {
+        Route::post('/create', [MumineenSabeelController::class, 'create']);
+        Route::post('/retrieve/{id?}', [MumineenSabeelController::class, 'fetch']);
+        Route::post('/update/{id}', [MumineenSabeelController::class, 'edit']);
+        Route::delete('/delete/{id}', [MumineenSabeelController::class, 'delete']);
     });
 
     // establishment route
