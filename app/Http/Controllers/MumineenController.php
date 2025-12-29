@@ -11,7 +11,7 @@ use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
-use App\Models\Receipt;
+use App\Models\ReceiptModel;
 use App\Models\YearModel;
 
 class MumineenController extends Controller
@@ -243,7 +243,7 @@ class MumineenController extends Controller
             ->groupBy('family_id');
 
         // Family receipts paid by year
-        $familyPaid = Receipt::select('family_id','year', DB::raw('SUM(amount) as paid'))
+        $familyPaid = ReceiptModel::select('family_id','year', DB::raw('SUM(amount) as paid'))
             ->whereIn('family_id', $familyIds)
             ->where('status','active')
             ->groupBy('family_id','year')
@@ -251,7 +251,7 @@ class MumineenController extends Controller
             ->groupBy('family_id');
 
         // Establishment links + names
-        $links = MumineenEstablishment::with('establishment:id,name')
+        $links = MumineenEstablishmentModel::with('establishment:id,name')
             ->whereIn('family_id', $familyIds)
             ->get()
             ->groupBy('family_id');
@@ -259,12 +259,12 @@ class MumineenController extends Controller
         $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
 
         // Establishment sabeel
-        $es = empty($estIds) ? collect() : EstablishmentSabeel::whereIn('establishment_id', $estIds)
+        $es = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
             ->get()
             ->groupBy('establishment_id');
 
         // Establishment receipts paid by year
-        $estPaid = empty($estIds) ? collect() : Receipt::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
+        $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
             ->whereIn('establishment_id', $estIds)
             ->where('status','active')
             ->groupBy('establishment_id','year')
