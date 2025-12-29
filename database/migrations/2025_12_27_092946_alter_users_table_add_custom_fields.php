@@ -21,6 +21,9 @@ return new class extends Migration
             $table->enum('role', ['user', 'admin'])->after('mobile');
 
             $table->string('access')->nullable()->after('role');
+
+            // Add unique index
+            $table->unique('username', 'users_username_unique');
         });
     }
 
