@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 use App\Models\MumineenModel;
-use App\Models\MumineenSabeel;
-use App\Models\MumineenEstablishment;
-use App\Models\EstablishmentSabeel;
+use App\Models\MumineenSabeelModel;
+use App\Models\MumineenEstablishmentModel;
+use App\Models\EstablishmentSabeelModel;
 use App\Models\Receipt;
-use App\Models\Year;
+use App\Models\YearModel;
 
 class MumineenController extends Controller
 {
