@@ -20,7 +20,7 @@ class MumineenEstablishmentController extends Controller
      * POST /partners/create/{establishment_id}
      * Body: { "its": "12345678" }
      */
-    public function create(Request $request, $establishment_no)
+   public function create(Request $request, $establishment_no)
     {
         try {
             $validator = Validator::make($request->all(), [
@@ -31,7 +31,7 @@ class MumineenEstablishmentController extends Controller
                 return $this->validation($validator);
             }
 
-            // validate establishment
+            // ✅ validate establishment using establishment_no (not id)
             $est = EstablishmentModel::where('establishment_no', $establishment_no)->first();
             if (!$est) {
                 return $this->error('Invalid establishment.', 404);
@@ -45,7 +45,7 @@ class MumineenEstablishmentController extends Controller
 
             // prevent duplicate mapping
             $exists = MumineenEstablishmentModel::where([
-                'its'              => $request->its,
+                'its'              => $mumineen->its,
                 'establishment_no' => $establishment_no,
             ])->exists();
 
