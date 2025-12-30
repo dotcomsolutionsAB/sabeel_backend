@@ -111,6 +111,10 @@ class ReceiptController extends Controller
 
             // Generate receipt_no
             $receiptNo = $this->nextReceiptNo(); // uses t_counter
+dd(
+    ReceiptModel::getFillable(),
+    (new ReceiptModel)->establishment()->getForeignKeyName()
+);
 
             $row = ReceiptModel::create([
                 'family_id'        => $familyId,
