@@ -11,6 +11,7 @@ use App\Http\Controllers\EstablishmentSabeelController;
 use App\Http\Controllers\CounterController;
 use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\YearController;
+use App\Http\Controllers\MumineenEstablishmentController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -52,6 +53,14 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [EstablishmentController::class, 'fetch']);
         Route::post('/update/{id}', [EstablishmentController::class, 'edit']);
         Route::delete('/delete/{id}', [EstablishmentController::class, 'delete']);
+    });
+
+    // establishment route
+    Route::prefix('partners')->group(function () {
+        Route::post('/create/{establishment_id}', [MumineenEstablishmentController::class, 'create']);
+        Route::post('/retrieve/{establishment_id}/{id?}', [MumineenEstablishmentController::class, 'fetch']);
+        Route::post('/update/{id}', [MumineenEstablishmentController::class, 'edit']);
+        Route::delete('/delete/{id}', [MumineenEstablishmentController::class, 'delete']);
     });
 
     // establishment-sabeel route
