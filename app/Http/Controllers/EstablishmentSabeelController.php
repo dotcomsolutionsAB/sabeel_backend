@@ -19,11 +19,13 @@ class EstablishmentSabeelController extends Controller
 {
     use ApiResponse;
 
-    public function create(Request $request, $establishment_id)
+    public function create(Request $request, $establishment_no)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_id);
-            if (!$est) return $this->error('Invalid establishment_id. Establishment not found.', 404);
+            $est = $this->resolveEstablishment($establishment_no);
+            if (!$est) {
+                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+            }
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
@@ -31,20 +33,22 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $exists = EstablishmentSabeelModel::where('establishment_no', $est->id)
+            $exists = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
                 ->where('year', $request->year)
                 ->exists();
 
-            if ($exists) return $this->error('Sabeel already exists for this establishment and year.', 409);
+            if ($exists) {
+                return $this->error('Sabeel already exists for this establishment and year.', 409);
+            }
 
             EstablishmentSabeelModel::create([
-                'establishment_no' => (int) $est->id,   // ✅ store PK id
+                'establishment_no' => (int) $establishment_no,
                 'year'             => (int) $request->year,
                 'sabeel'           => (int) $request->sabeel,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
-            $payload = $this->buildEstablishmentSummaryPayload((int)$est->id);
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
             return $this->success('Data saved successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -52,21 +56,33 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    public function fetch(Request $request, $establishment_id, $id = null)
+   public function fetch(Request $request, $establishment_no, $id = null)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_id);
-            if (!$est) return $this->error('Invalid establishment_id. Establishment not found.', 404);
-
-            if ($id !== null) {
-                $entry = EstablishmentSabeelModel::where('id', $id)
-                    ->where('establishment_id', $est->id)
-                    ->first();
-
-                if (!$entry) return $this->error('Sabeel entry not found for this establishment.', 404);
+            $est = $this->resolveEstablishment($establishment_no);
+            if (!$est) {
+                return $this->error('Invalid establishment_no. Establishment not found.', 404);
             }
 
-            $payload = $this->buildEstablishmentSummaryPayload((int)$est->id);
+            // SINGLE
+            if ($id !== null) {
+                $entry = EstablishmentSabeelModel::where('id', $id)
+                    ->where('establishment_no', $establishment_no)
+                    ->first();
+
+                if (!$entry) {
+                    return $this->error('Sabeel entry not found.', 404);
+                }
+
+                return $this->success(
+                    'Data fetched successfully',
+                    $this->buildEstablishmentSummaryPayload($establishment_no),
+                    200
+                );
+            }
+
+            // LIST
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
             return $this->success('Data fetched successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -74,17 +90,21 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    public function edit(Request $request, $establishment_id, $id)
+    public function edit(Request $request, $establishment_no, $id)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_id);
-            if (!$est) return $this->error('Invalid establishment_id. Establishment not found.', 404);
+            $est = $this->resolveEstablishment($establishment_no);
+            if (!$est) {
+                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+            }
 
             $row = EstablishmentSabeelModel::where('id', $id)
-                ->where('establishment_id', $est->id)
+                ->where('establishment_no', $establishment_no)
                 ->first();
 
-            if (!$row) return $this->error('Sabeel entry not found for this establishment.', 404);
+            if (!$row) {
+                return $this->error('Sabeel entry not found.', 404);
+            }
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
@@ -92,19 +112,21 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $dup = EstablishmentSabeelModel::where('establishment_no', $est->id)
+            $dup = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
                 ->where('year', $request->year)
                 ->where('id', '!=', $row->id)
                 ->exists();
 
-            if ($dup) return $this->error('Another entry already exists for this establishment and year.', 409);
+            if ($dup) {
+                return $this->error('Another entry already exists for this year.', 409);
+            }
 
             $row->year = (int) $request->year;
             $row->sabeel = (int) $request->sabeel;
             $row->updated_by = (int) Auth::id();
             $row->save();
 
-            $payload = $this->buildEstablishmentSummaryPayload((int)$est->id);
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
             return $this->success('Data saved successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -112,19 +134,24 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    public function delete($establishment_id, $id)
+    public function delete($establishment_no, $id)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_id);
-            if (!$est) return $this->error('Invalid establishment_id. Establishment not found.', 404);
+            $est = $this->resolveEstablishment($establishment_no);
+            if (!$est) {
+                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+            }
 
             $row = EstablishmentSabeelModel::where('id', $id)
-                ->where('establishment_no', $est->id)
+                ->where('establishment_no', $establishment_no)
                 ->first();
 
-            if (!$row) return $this->error('Sabeel entry not found for this establishment.', 404);
+            if (!$row) {
+                return $this->error('Sabeel entry not found.', 404);
+            }
 
             $row->delete();
+
             return $this->success('Data deleted successfully', [], 200);
 
         } catch (\Throwable $e) {
@@ -132,43 +159,34 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    private function resolveEstablishment($establishment_id): ?EstablishmentModel
+    private function resolveEstablishment($establishment_no): ?EstablishmentModel
     {
-        return EstablishmentModel::where('establishment_no', $establishment_id)->first();
-        // or support both:
-        // return EstablishmentModel::where('id',$establishment_id)->orWhere('establishment_no',$establishment_id)->first();
+        return EstablishmentModel::where('establishment_no', $establishment_no)->first();
     }
 
     /**
      * Build establishment sabeel summary payload
      * Uses PRIMARY KEY id internally
      */
-    private function buildEstablishmentSummaryPayload(int $establishmentPkId): array
+    private function buildEstablishmentSummaryPayload($establishment_no): array
     {
-        // fetch establishment
-        $est = EstablishmentModel::find($establishmentPkId);
-        if (!$est) {
-            return [];
-        }
+        $est = EstablishmentModel::where('establishment_no', $establishment_no)->first();
+        if (!$est) return [];
 
-        // fetch all sabeel entries
-        $rows = EstablishmentSabeelModel::where('establishment_no', $establishmentPkId)
+        $rows = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
             ->orderBy('year', 'desc')
             ->get();
 
         return [
             'establishment' => [
-                'id'               => (string) $est->id,
                 'establishment_no' => (string) $est->establishment_no,
                 'name'             => (string) $est->name,
             ],
-            'sabeel' => $rows->map(function ($r) {
-                return [
-                    'id'     => (string) $r->id,
-                    'year'   => (string) $r->year,
-                    'sabeel' => (string) $r->sabeel,
-                ];
-            })->values(),
+            'sabeel' => $rows->map(fn ($r) => [
+                'id'     => (string) $r->id,
+                'year'   => (string) $r->year,
+                'sabeel' => (string) $r->sabeel,
+            ])->values(),
         ];
     }
 }
