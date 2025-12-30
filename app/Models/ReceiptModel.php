@@ -12,7 +12,7 @@ class ReceiptModel extends Model
 
     protected $fillable = [
         'family_id',
-        'establishment_id',
+        'establishment_no',
         'receipt_no',
         'date',
         'name',
@@ -33,7 +33,7 @@ class ReceiptModel extends Model
 
     protected $casts = [
         'family_id'         => 'integer',
-        'establishment_id'  => 'integer',
+        'establishment_no'  => 'integer',
         'date'              => 'date',
         'transaction_date'  => 'date',
         'cheque_date'       => 'date',
@@ -44,7 +44,7 @@ class ReceiptModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(EstablishmentModel::class, 'establishment_id');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_no');
     }
 
     public function updatedBy(): BelongsTo

@@ -27,7 +27,7 @@ class ReceiptController extends Controller
      * {
      *   "type":"family|establishment",
      *   "family_id": "",
-     *   "establishment_id": "",
+     *   "establishment_no": "",
      *   "year": 2025,
      *   "mode": "cash|cheque|neft",
      *   "amount": 2100,
@@ -47,7 +47,7 @@ class ReceiptController extends Controller
                 'type' => 'required|in:family,establishment',
 
                 'family_id'        => 'required_if:type,family|nullable|integer',
-                'establishment_id' => 'required_if:type,establishment|nullable|integer',
+                'establishment_no' => 'required_if:type,establishment|nullable|integer',
 
                 'year'   => 'required|integer|min:2000|max:2100',
                 'mode'   => 'required|in:cash,cheque,neft',
@@ -90,11 +90,11 @@ class ReceiptController extends Controller
                 $name = $hof->name;
                 $its  = $hof->its;
             } else {
-                $estId = (int) $request->establishment_id;
+                $estId = (int) $request->establishment_no;
 
                 $est = EstablishmentModel::find($estId);
                 if (!$est) {
-                    return $this->error('Invalid establishment_id. Establishment not found.', 404);
+                    return $this->error('Invalid establishment_no. Establishment not found.', 404);
                 }
 
                 $name = $est->name;
@@ -114,7 +114,7 @@ class ReceiptController extends Controller
 
             $row = ReceiptModel::create([
                 'family_id'        => $familyId,
-                'establishment_id' => $estId,
+                'establishment_no' => $estId,
 
                 'receipt_no' => $receiptNo,
                 'date'       => now()->toDateString(),
@@ -155,7 +155,7 @@ class ReceiptController extends Controller
      * {
      *   "type":"family|establishment",
      *   "family_id": null,
-     *   "establishment_id": null,
+     *   "establishment_no": null,
      *   "date_from":"YYYY-MM-DD",
      *   "date_to":"YYYY-MM-DD",
      *   "limit":10,
@@ -179,7 +179,7 @@ class ReceiptController extends Controller
                 'type' => 'required|in:family,establishment',
 
                 'family_id'        => 'nullable|integer',
-                'establishment_id' => 'nullable|integer',
+                'establishment_no' => 'nullable|integer',
 
                 'date_from' => 'nullable|date',
                 'date_to'   => 'nullable|date',
@@ -204,15 +204,15 @@ class ReceiptController extends Controller
             if ($type === 'family') {
                 $q->whereNotNull('family_id');
             } else {
-                $q->whereNotNull('establishment_id');
+                $q->whereNotNull('establishment_no');
             }
 
             if ($request->filled('family_id')) {
                 $q->where('family_id', (int)$request->family_id);
             }
 
-            if ($request->filled('establishment_id')) {
-                $q->where('establishment_id', (int)$request->establishment_id);
+            if ($request->filled('establishment_no')) {
+                $q->where('establishment_no', (int)$request->establishment_no);
             }
 
             if ($request->filled('date_from')) {
@@ -341,7 +341,7 @@ class ReceiptController extends Controller
 
             'type'             => $type,
             'family_id'        => $r->family_id ? (string)$r->family_id : '',
-            'establishment_id' => $r->establishment_id ? (string)$r->establishment_id : '',
+            'establishment_no' => $r->establishment_no ? (string)$r->establishment_no : '',
 
             'mode' => (string) $r->mode,
 
