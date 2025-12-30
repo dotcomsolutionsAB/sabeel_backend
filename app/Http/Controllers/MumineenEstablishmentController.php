@@ -46,7 +46,7 @@ class MumineenEstablishmentController extends Controller
             // prevent duplicate mapping
             $exists = MumineenEstablishmentModel::where([
                 'its'              => $request->its,
-                'establishment_no' => $establishment_id,
+                'establishment_no' => $est->establishment_no,
             ])->exists();
 
             if ($exists) {
@@ -56,7 +56,7 @@ class MumineenEstablishmentController extends Controller
             $row = MumineenEstablishmentModel::create([
                 'family_id'        => $mumineen->family_id,
                 'its'              => $mumineen->its,
-                'establishment_no' => (int) $establishment_id,
+                'establishment_no' => (int) $est->establishment_no,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
