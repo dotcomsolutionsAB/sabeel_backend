@@ -119,32 +119,7 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    // public function delete($establishment_no, $id)
-    // {
-    //     try {
-    //         $est = $this->resolveEstablishment($establishment_no);
-    //         if (!$est) {
-    //             return $this->error('Invalid establishment_no. Establishment not found.', 404);
-    //         }
-
-    //         $row = EstablishmentSabeelModel::where('id', $id)
-    //             ->where('establishment_no', $establishment_no)
-    //             ->first();
-
-    //         if (!$row) {
-    //             return $this->error('Sabeel entry not found.', 404);
-    //         }
-
-    //         $row->delete();
-
-    //         return $this->success('Data deleted successfully', [], 200);
-
-    //     } catch (\Throwable $e) {
-    //         return $this->serverError($e, 'Establishment sabeel delete failed');
-    //     }
-    // }
-
-    public function delete(Request $request, $establishment_no)
+    public function delete($establishment_no, $id)
     {
         try {
             $est = $this->resolveEstablishment($establishment_no);
@@ -152,21 +127,12 @@ class EstablishmentSabeelController extends Controller
                 return $this->error('Invalid establishment_no. Establishment not found.', 404);
             }
 
-            // ✅ validate year from form-data
-            $validator = Validator::make($request->all(), [
-                'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            ]);
-
-            if ($validator->fails()) {
-                return $this->validation($validator);
-            }
-
-            $row = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
-                ->where('year', (int) $request->year)
+            $row = EstablishmentSabeelModel::where('id', $id)
+                ->where('establishment_no', $establishment_no)
                 ->first();
 
             if (!$row) {
-                return $this->error('Sabeel entry not found for this year.', 404);
+                return $this->error('Sabeel entry not found.', 404);
             }
 
             $row->delete();
@@ -177,6 +143,40 @@ class EstablishmentSabeelController extends Controller
             return $this->serverError($e, 'Establishment sabeel delete failed');
         }
     }
+
+    // public function delete(Request $request, $establishment_no)
+    // {
+    //     try {
+    //         $est = $this->resolveEstablishment($establishment_no);
+    //         if (!$est) {
+    //             return $this->error('Invalid establishment_no. Establishment not found.', 404);
+    //         }
+
+    //         // ✅ validate year from form-data
+    //         $validator = Validator::make($request->all(), [
+    //             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+    //         ]);
+
+    //         if ($validator->fails()) {
+    //             return $this->validation($validator);
+    //         }
+
+    //         $row = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
+    //             ->where('year', (int) $request->year)
+    //             ->first();
+
+    //         if (!$row) {
+    //             return $this->error('Sabeel entry not found for this year.', 404);
+    //         }
+
+    //         $row->delete();
+
+    //         return $this->success('Data deleted successfully', [], 200);
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Establishment sabeel delete failed');
+    //     }
+    // }
 
 
     private function resolveEstablishment($establishment_no): ?EstablishmentModel
