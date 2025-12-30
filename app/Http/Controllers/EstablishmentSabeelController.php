@@ -56,7 +56,7 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-   public function fetch(Request $request, $establishment_no, $id = null)
+    public function fetch(Request $request, $establishment_no, $id = null)
     {
         try {
             $est = $this->resolveEstablishment($establishment_no);
@@ -64,26 +64,9 @@ class EstablishmentSabeelController extends Controller
                 return $this->error('Invalid establishment_no. Establishment not found.', 404);
             }
 
-            // SINGLE
-            if ($id !== null) {
-                $entry = EstablishmentSabeelModel::where('id', $id)
-                    ->where('establishment_no', $establishment_no)
-                    ->first();
-
-                if (!$entry) {
-                    return $this->error('Sabeel entry not found.', 404);
-                }
-
-                return $this->success(
-                    'Data fetched successfully',
-                    $this->buildEstablishmentSummaryPayload($establishment_no),
-                    200
-                );
-            }
-
-            // LIST
             $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
-            return $this->success('Data fetched successfully', $payload, 200);
+
+            return $this->success('Data fetched successfully', [$payload], 200);
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment sabeel fetch failed');
@@ -168,25 +151,39 @@ class EstablishmentSabeelController extends Controller
      * Build establishment sabeel summary payload
      * Uses PRIMARY KEY id internally
      */
-    private function buildEstablishmentSummaryPayload($establishment_no): array
+    private function buildEstablishmentSummaryPayload(int $establishment_no): array
     {
-        $est = EstablishmentModel::where('establishment_no', $establishment_no)->first();
-        if (!$est) return [];
-
         $rows = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
             ->orderBy('year', 'desc')
             ->get();
 
-        return [
-            'establishment' => [
-                'establishment_no' => (string) $est->establishment_no,
-                'name'             => (string) $est->name,
-            ],
-            'sabeel' => $rows->map(fn ($r) => [
-                'id'     => (string) $r->id,
-                'year'   => (string) $r->year,
+        $details = $rows->map(function ($r) use ($establishment_no) {
+
+            $paid = $this->paidForYear($establishment_no, (int)$r->year);
+            $due  = max(0, (int)$r->sabeel - $paid);
+
+            return [
+                'year'   => $this->formatFinancialYear((int)$r->year),
                 'sabeel' => (string) $r->sabeel,
-            ])->values(),
+                'due'    => (string) $due,
+            ];
+        })->values();
+
+        return [
+            'sabeel_details' => $details,
         ];
+    }
+
+    private function formatFinancialYear(int $year): string
+    {
+        return $year . '-' . substr((string)($year + 1), -2);
+    }
+
+    private function paidForYear(int $establishment_no, int $year): int
+    {
+        return (int) ReceiptModel::where('establishment_no', $establishment_no)
+            ->where('year', $year)
+            ->where('status', 'active')
+            ->sum('amount');
     }
 }
