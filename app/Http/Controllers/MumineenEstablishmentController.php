@@ -32,7 +32,7 @@ class MumineenEstablishmentController extends Controller
             }
 
             // validate establishment
-            $est = EstablishmentModel::find($establishment_no);
+            $est = EstablishmentModel::where('establishment_no', $establishment_no)->first();
             if (!$est) {
                 return $this->error('Invalid establishment.', 404);
             }
