@@ -67,8 +67,8 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('establishment_sabeel')->group(function () {
         Route::post('/create/{establishment_no}', [EstablishmentSabeelController::class, 'create']);
         Route::post('/retrieve/{establishment_no}/{id?}', [EstablishmentSabeelController::class, 'fetch']);
-        Route::post('/update//{establishment_no}/{id}', [EstablishmentSabeelController::class, 'edit']);
-        Route::delete('/delete//{establishment_no}/{id}', [EstablishmentSabeelController::class, 'delete']);
+        Route::post('/update/{establishment_no}/{id}', [EstablishmentSabeelController::class, 'edit']);
+        Route::delete('/delete/{establishment_no}/{id}', [EstablishmentSabeelController::class, 'delete']);
     });
 
     // counter route
