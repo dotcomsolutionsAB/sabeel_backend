@@ -36,6 +36,6 @@ class MumineenEstablishmentModel extends Model
     // Link to mumineen through ITS (optional helpful)
     public function mumineen(): BelongsTo
     {
-        return $this->belongsTo(Mumineen::class, 'its', 'its');
+        return $this->belongsTo(MumineenModel::class, 'its', 'its');
     }
 }
