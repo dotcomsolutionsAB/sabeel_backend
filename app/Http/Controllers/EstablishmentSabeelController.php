@@ -139,6 +139,36 @@ class EstablishmentSabeelController extends Controller
         // return EstablishmentModel::where('id',$establishment_id)->orWhere('establishment_no',$establishment_id)->first();
     }
 
-    // resolveYears(), estDueForYear(), buildEstablishmentSummaryPayload() remain SAME
-    // because they already accept the PRIMARY KEY id now (we pass $est->id)
+    /**
+     * Build establishment sabeel summary payload
+     * Uses PRIMARY KEY id internally
+     */
+    private function buildEstablishmentSummaryPayload(int $establishmentPkId): array
+    {
+        // fetch establishment
+        $est = EstablishmentModel::find($establishmentPkId);
+        if (!$est) {
+            return [];
+        }
+
+        // fetch all sabeel entries
+        $rows = EstablishmentSabeelModel::where('establishment_no', $establishmentPkId)
+            ->orderBy('year', 'desc')
+            ->get();
+
+        return [
+            'establishment' => [
+                'id'               => (string) $est->id,
+                'establishment_no' => (string) $est->establishment_no,
+                'name'             => (string) $est->name,
+            ],
+            'sabeel' => $rows->map(function ($r) {
+                return [
+                    'id'     => (string) $r->id,
+                    'year'   => (string) $r->year,
+                    'sabeel' => (string) $r->sabeel,
+                ];
+            })->values(),
+        ];
+    }
 }
