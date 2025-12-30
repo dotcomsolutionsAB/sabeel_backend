@@ -11,14 +11,14 @@ class EstablishmentSabeelModel extends Model
     protected $table = 't_establishment_sabeel';
 
     protected $fillable = [
-        'establishment_id',
+        'establishment_no',
         'year',
         'sabeel',
         'updated_by',
     ];
 
     protected $casts = [
-        'establishment_id' => 'integer',
+        'establishment_no' => 'integer',
         'year'             => 'integer',
         'sabeel'           => 'integer',
         'updated_by'       => 'integer',
@@ -26,7 +26,7 @@ class EstablishmentSabeelModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(EstablishmentModel  ::class, 'establishment_id');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_no');
     }
 
     public function updatedBy(): BelongsTo

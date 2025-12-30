@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('t_receipts', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('family_id')->nullable();
-            $table->unsignedBigInteger('establishment_id')->nullable();
+            $table->unsignedBigInteger('establishment_no')->nullable();
 
             $table->string('receipt_no');
             $table->date('date');
