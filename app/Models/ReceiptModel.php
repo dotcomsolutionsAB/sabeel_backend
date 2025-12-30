@@ -44,7 +44,7 @@ class ReceiptModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(EstablishmentModel::class, 'establishment_no');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_no', 'id');
     }
 
     public function updatedBy(): BelongsTo
