@@ -25,7 +25,7 @@ class MumineenEstablishmentModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(Establishment::class, 'establishment_id');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_id');
     }
 
     public function updatedBy(): BelongsTo
