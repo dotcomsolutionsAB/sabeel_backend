@@ -102,7 +102,7 @@ class EstablishmentController extends Controller
                       ->orWhereExists(function($sub) use ($search) {
                           $sub->from('t_mumineen_establishment as me')
                               ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                              ->whereColumn('me.establishment_id', 't_establishment.id')
+                              ->whereColumn('me.establishment_no', 't_establishment.id')
                               ->where(function($x) use ($search) {
                                   $x->where('m.its', 'like', "%{$search}%")
                                     ->orWhere('m.name', 'like', "%{$search}%")
@@ -234,7 +234,7 @@ class EstablishmentController extends Controller
         // not_tagged => no partners linked
         if ($filter === 'not_tagged') {
             return $q->whereNotIn('id', function($sub){
-                $sub->from('t_mumineen_establishment')->select('establishment_id');
+                $sub->from('t_mumineen_establishment')->select('establishment_no');
             });
         }
 
@@ -242,7 +242,7 @@ class EstablishmentController extends Controller
         if ($filter === 'new_takhmeen_pending') {
             return $q->whereNotIn('id', function($sub) use ($currentYear) {
                 $sub->from('t_establishment_sabeel')
-                    ->select('establishment_id')
+                    ->select('establishment_no')
                     ->where('year', $currentYear);
             });
         }
@@ -253,14 +253,14 @@ class EstablishmentController extends Controller
 
             return $q->whereIn('id', function($sub) use ($year) {
                 $sub->from('t_establishment_sabeel as es')
-                    ->select('es.establishment_id')
+                    ->select('es.establishment_no')
                     ->leftJoin('t_receipts as r', function($j) use ($year) {
-                        $j->on('r.establishment_id','=','es.establishment_id')
+                        $j->on('r.establishment_no','=','es.establishment_no')
                           ->where('r.year','=',$year)
                           ->where('r.status','=','active');
                     })
                     ->where('es.year', $year)
-                    ->groupBy('es.establishment_id','es.sabeel')
+                    ->groupBy('es.establishment_no','es.sabeel')
                     ->havingRaw('(es.sabeel - COALESCE(SUM(r.amount),0)) > 0');
             });
         }
@@ -274,22 +274,22 @@ class EstablishmentController extends Controller
         if (empty($estIds)) return [];
 
         // Establishment sabeel entries
-        $es = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+        $es = EstablishmentSabeelModel::whereIn('establishment_no', $estIds)
             ->get()
-            ->groupBy('establishment_id');
+            ->groupBy('establishment_no');
 
         // Receipts paid by year for establishments
-        $paid = ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
-            ->whereIn('establishment_id', $estIds)
+        $paid = ReceiptModel::select('establishment_no','year', DB::raw('SUM(amount) as paid'))
+            ->whereIn('establishment_no', $estIds)
             ->where('status','active')
-            ->groupBy('establishment_id','year')
+            ->groupBy('establishment_no','year')
             ->get()
-            ->groupBy('establishment_id');
+            ->groupBy('establishment_no');
 
         // Partners via links (family_id) => get HOF data from t_mumineen
-        $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)
+        $links = MumineenEstablishmentModel::whereIn('establishment_no', $estIds)
             ->get()
-            ->groupBy('establishment_id');
+            ->groupBy('establishment_no');
 
         $familyIds = $links->flatten()->pluck('family_id')->filter()->unique()->values()->all();
 

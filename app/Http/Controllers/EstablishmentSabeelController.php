@@ -31,14 +31,14 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $exists = EstablishmentSabeelModel::where('establishment_id', $est->id)
+            $exists = EstablishmentSabeelModel::where('establishment_no', $est->id)
                 ->where('year', $request->year)
                 ->exists();
 
             if ($exists) return $this->error('Sabeel already exists for this establishment and year.', 409);
 
             EstablishmentSabeelModel::create([
-                'establishment_id' => (int) $est->id,   // ✅ store PK id
+                'establishment_no' => (int) $est->id,   // ✅ store PK id
                 'year'             => (int) $request->year,
                 'sabeel'           => (int) $request->sabeel,
                 'updated_by'       => (int) Auth::id(),
@@ -92,7 +92,7 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $dup = EstablishmentSabeelModel::where('establishment_id', $est->id)
+            $dup = EstablishmentSabeelModel::where('establishment_no', $est->id)
                 ->where('year', $request->year)
                 ->where('id', '!=', $row->id)
                 ->exists();
@@ -119,7 +119,7 @@ class EstablishmentSabeelController extends Controller
             if (!$est) return $this->error('Invalid establishment_id. Establishment not found.', 404);
 
             $row = EstablishmentSabeelModel::where('id', $id)
-                ->where('establishment_id', $est->id)
+                ->where('establishment_no', $est->id)
                 ->first();
 
             if (!$row) return $this->error('Sabeel entry not found for this establishment.', 404);
