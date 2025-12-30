@@ -64,7 +64,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     });
 
     // establishment-sabeel route
-    Route::prefix('establishment_details/{establishment_id}')->group(function () {
+    Route::prefix('establishment_details/{establishment_no}')->group(function () {
         Route::post('/create', [EstablishmentSabeelController::class, 'create']);
         Route::post('/retrieve/{id?}', [EstablishmentSabeelController::class, 'fetch']);
         Route::post('/update/{id}', [EstablishmentSabeelController::class, 'edit']);

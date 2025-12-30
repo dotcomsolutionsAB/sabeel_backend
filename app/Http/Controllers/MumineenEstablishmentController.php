@@ -20,7 +20,7 @@ class MumineenEstablishmentController extends Controller
      * POST /partners/create/{establishment_id}
      * Body: { "its": "12345678" }
      */
-    public function create(Request $request, $establishment_id)
+    public function create(Request $request, $establishment_no)
     {
         try {
             $validator = Validator::make($request->all(), [
@@ -46,7 +46,7 @@ class MumineenEstablishmentController extends Controller
             // prevent duplicate mapping
             $exists = MumineenEstablishmentModel::where([
                 'its'              => $request->its,
-                'establishment_no' => $est->establishment_no,
+                'establishment_no' => $establishment_no,
             ])->exists();
 
             if ($exists) {
@@ -56,7 +56,7 @@ class MumineenEstablishmentController extends Controller
             $row = MumineenEstablishmentModel::create([
                 'family_id'        => $mumineen->family_id,
                 'its'              => $mumineen->its,
-                'establishment_no' => (int) $est->establishment_no,
+                'establishment_no' => (int) $establishment_no,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
@@ -71,7 +71,7 @@ class MumineenEstablishmentController extends Controller
      * FETCH
      * POST /partners/retrieve/{establishment_id}/{id?}
      */
-    public function fetch(Request $request, $establishment_id, $id = null)
+    public function fetch(Request $request, $establishment_no, $id = null)
     {
         try {
             // SINGLE
@@ -88,7 +88,7 @@ class MumineenEstablishmentController extends Controller
 
             // LIST
             $rows = MumineenEstablishmentModel::with('mumineen')
-                ->where('establishment_no', (int)$establishment_id)
+                ->where('establishment_no', (int)$establishment_no)
                 ->orderBy('id', 'desc')
                 ->get();
 
