@@ -66,12 +66,14 @@ class EstablishmentSabeelController extends Controller
 
             $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
 
+            // 👇 wrapping in array is IMPORTANT
             return $this->success('Data fetched successfully', [$payload], 200);
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment sabeel fetch failed');
         }
     }
+
 
     public function edit(Request $request, $establishment_no, $id)
     {
@@ -169,6 +171,7 @@ class EstablishmentSabeelController extends Controller
             ];
         })->values();
 
+        // 👇 THIS SHAPE IS THE KEY
         return [
             'sabeel_details' => $details,
         ];
