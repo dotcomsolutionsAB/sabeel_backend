@@ -42,6 +42,7 @@ class ReceiptController extends Controller
      */
     public function create(Request $request)
     {
+        dd("test");
         try {
             $validator = Validator::make($request->all(), [
                 'type' => 'required|in:family,establishment',
