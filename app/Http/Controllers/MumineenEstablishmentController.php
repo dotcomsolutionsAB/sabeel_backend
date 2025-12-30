@@ -20,7 +20,7 @@ class MumineenEstablishmentController extends Controller
      * POST /partners/create/{establishment_id}
      * Body: { "its": "12345678" }
      */
-   public function create(Request $request, $establishment_no)
+    public function create(Request $request, $establishment_no)
     {
         try {
             $validator = Validator::make($request->all(), [
