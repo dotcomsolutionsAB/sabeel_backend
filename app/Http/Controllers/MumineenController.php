@@ -242,8 +242,6 @@ class MumineenController extends Controller
                 $hof = MumineenModel::where('family_id', $familyId)
                     ->where('hof_type', 'HOF')
                     ->first();
-                print_r($familyId);
-                dd($hof);
 
                 if (!$hof) return $this->error('Family not found.', 404);
             }
