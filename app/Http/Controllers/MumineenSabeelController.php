@@ -37,7 +37,7 @@ class MumineenSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
-                'sabeel' => 'required|integer|min:0',
+                'amount' => 'required|integer|min:0',
             ]);
 
             if ($validator->fails()) {
@@ -56,7 +56,7 @@ class MumineenSabeelController extends Controller
             $row = MumineenSabeelModel::create([
                 'family_id'  => (int) $family_id,
                 'year'       => (int) $request->year,
-                'sabeel'     => (int) $request->sabeel,
+                'sabeel'     => (int) $request->amount,
                 'updated_by' => (int) Auth::id(),
             ]);
 
@@ -128,7 +128,7 @@ class MumineenSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
-                'sabeel' => 'required|integer|min:0',
+                'amount' => 'required|integer|min:0',
             ]);
 
             if ($validator->fails()) {
@@ -146,7 +146,7 @@ class MumineenSabeelController extends Controller
             }
 
             $row->year = (int) $request->year;
-            $row->sabeel = (int) $request->sabeel;
+            $row->sabeel = (int) $request->amount;
             $row->updated_by = (int) Auth::id();
             $row->save();
 

@@ -29,7 +29,7 @@ class EstablishmentSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
-                'sabeel' => 'required|integer|min:0',
+                'amount' => 'required|integer|min:0',
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
@@ -44,7 +44,7 @@ class EstablishmentSabeelController extends Controller
             EstablishmentSabeelModel::create([
                 'establishment_id' => (int) $establishment_id,
                 'year'             => (int) $request->year,
-                'sabeel'           => (int) $request->sabeel,
+                'sabeel'           => (int) $request->amount,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
@@ -93,7 +93,7 @@ class EstablishmentSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|integer|min:2000|max:2100',
-                'sabeel' => 'required|integer|min:0',
+                'amount' => 'required|integer|min:0',
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
@@ -107,7 +107,7 @@ class EstablishmentSabeelController extends Controller
             }
 
             $row->year = (int) $request->year;
-            $row->sabeel = (int) $request->sabeel;
+            $row->sabeel = (int) $request->amount;
             $row->updated_by = (int) Auth::id();
             $row->save();
 
@@ -143,41 +143,6 @@ class EstablishmentSabeelController extends Controller
             return $this->serverError($e, 'Establishment sabeel delete failed');
         }
     }
-
-    // public function delete(Request $request, $establishment_id)
-    // {
-    //     try {
-    //         $est = $this->resolveEstablishment($establishment_id);
-    //         if (!$est) {
-    //             return $this->error('Invalid establishment_id. Establishment not found.', 404);
-    //         }
-
-    //         // ✅ validate year from form-data
-    //         $validator = Validator::make($request->all(), [
-    //             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-    //         ]);
-
-    //         if ($validator->fails()) {
-    //             return $this->validation($validator);
-    //         }
-
-    //         $row = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
-    //             ->where('year', (int) $request->year)
-    //             ->first();
-
-    //         if (!$row) {
-    //             return $this->error('Sabeel entry not found for this year.', 404);
-    //         }
-
-    //         $row->delete();
-
-    //         return $this->success('Data deleted successfully', [], 200);
-
-    //     } catch (\Throwable $e) {
-    //         return $this->serverError($e, 'Establishment sabeel delete failed');
-    //     }
-    // }
-
 
     private function resolveEstablishment($establishment_id): ?EstablishmentModel
     {
