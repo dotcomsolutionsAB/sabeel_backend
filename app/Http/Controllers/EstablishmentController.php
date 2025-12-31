@@ -330,7 +330,7 @@ class EstablishmentController extends Controller
 
             $out[] = [
                 'id'               => (string) $e->id,
-                'establishment_id' => (string) $e->establishment_no,
+                'establishment_no' => (string) $e->establishment_no,
                 'name'             => (string) $e->name,
                 'address'          => (string) $e->address,
 

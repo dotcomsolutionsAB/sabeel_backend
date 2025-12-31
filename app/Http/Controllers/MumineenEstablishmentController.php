@@ -17,7 +17,7 @@ class MumineenEstablishmentController extends Controller
 
     /**
      * CREATE
-     * POST /partners/create/{establishment_id}
+     * POST /partners/create/{establishment_no}
      * Body: { "its": "12345678" }
      */
     public function create(Request $request, $establishment_no)
@@ -69,7 +69,7 @@ class MumineenEstablishmentController extends Controller
 
     /**
      * FETCH
-     * POST /partners/retrieve/{establishment_id}/{id?}
+     * POST /partners/retrieve/{establishment_no}/{id?}
      */
     public function fetch(Request $request, $establishment_no, $id = null)
     {

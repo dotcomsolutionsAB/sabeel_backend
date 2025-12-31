@@ -57,8 +57,8 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
     // establishment route
     Route::prefix('partners')->group(function () {
-        Route::post('/create/{establishment_id}', [MumineenEstablishmentController::class, 'create']);
-        Route::post('/retrieve/{establishment_id}/{id?}', [MumineenEstablishmentController::class, 'fetch']);
+        Route::post('/create/{establishment_no}', [MumineenEstablishmentController::class, 'create']);
+        Route::post('/retrieve/{establishment_no}/{id?}', [MumineenEstablishmentController::class, 'fetch']);
         Route::post('/update/{id}', [MumineenEstablishmentController::class, 'edit']);
         Route::delete('/delete/{id}', [MumineenEstablishmentController::class, 'delete']);
     });
