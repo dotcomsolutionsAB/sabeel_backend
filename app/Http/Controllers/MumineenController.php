@@ -340,23 +340,24 @@ class MumineenController extends Controller
         return [$sabeel, $due];
     }
 
-    private function establishmentTotalsDueForYear(array $estIds, int $year): array
+    private function establishmentTotalsDueForYear(array $estCodes, int $year): array
     {
-        if (empty($estIds)) return [0, 0];
+        if (empty($estCodes)) return [0, 0];
 
-        $sabeel = (int) EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+        $sabeelSum = (int) EstablishmentSabeelModel::whereIn('establishment_id', $estCodes)
             ->where('year', $year)
             ->sum('sabeel');
 
-        $paid = (float) ReceiptModel::whereIn('establishment_id', $estIds)
+        $paidSum = (float) ReceiptModel::whereIn('establishment_id', $estCodes)
             ->where('year', $year)
             ->where('status', 'active')
             ->sum('amount');
 
-        $due = max(0, $sabeel - $paid);
+        $dueSum = max(0, $sabeelSum - $paidSum);
 
-        return [$sabeel, $due];
+        return [$sabeelSum, $dueSum];
     }
+
 
     /* ----------------- Helpers ----------------- */
 
