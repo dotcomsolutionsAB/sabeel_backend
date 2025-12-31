@@ -225,7 +225,7 @@ class MumineenController extends Controller
     }
 
 
-    public function fetch_family_overview($family_id, $id = null)
+    public function fetch_family_details($family_id, $id = null)
     {
         try {
             // 1) Resolve familyId + HOF row
