@@ -13,6 +13,7 @@ use App\Models\MumineenEstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use Illuminate\Support\Facades\Schema;
 
 class MumineenController extends Controller
 {
