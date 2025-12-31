@@ -195,6 +195,157 @@ class EstablishmentController extends Controller
         }
     }
 
+    public function fetch_establishment_details($establishment_id, $id = null)
+    {
+        try {
+
+            // 1) establishment_id param is establishment_no (10 digit)
+            $est = EstablishmentModel::where('establishment_no', $establishment_id)->first();
+            if (!$est) {
+                return $this->error('Establishment not found.', 404);
+            }
+
+            // 2) Decide "current year" for calculation
+            //    If {id} passed => use that sabeel entry's year as current
+            $focusYear = null;
+
+            if ($id !== null) {
+                $entry = EstablishmentSabeelModel::where('id', $id)
+                    ->where('establishment_id', $est->id) // note: stores PK id
+                    ->first();
+
+                if (!$entry) {
+                    return $this->error('Sabeel entry not found for this establishment.', 404);
+                }
+
+                $focusYear = (int) $entry->year;
+            }
+
+            [$currentYear, $prevYear, $yearsList] = $this->resolveYearsForOverview($focusYear);
+
+            // 3) Partners list (HOF) from links
+            $links = MumineenEstablishmentModel::where('establishment_id', $est->id)->get();
+            $familyIds = $links->pluck('family_id')->filter()->unique()->values()->all();
+
+            $hofs = empty($familyIds)
+                ? collect()
+                : MumineenModel::whereIn('family_id', $familyIds)
+                    ->where('hof_type', 'HOF')
+                    ->get()
+                    ->keyBy('family_id');
+
+            $partners = [];
+            foreach ($links as $lnk) {
+                $hof = $hofs->get($lnk->family_id);
+                if (!$hof) continue;
+
+                $partners[] = [
+                    'url'    => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+                    'name'   => (string) ($hof->name ?? ''),
+                    'its'    => (string) ($hof->its ?? ''),
+                    'sector' => (string) ($hof->sector ?? ''),
+                    'mobile' => (string) ($hof->mobile ?? ''),
+                ];
+            }
+
+            // top-level url = first partner image (since establishment has no its)
+            $topUrl = count($partners) ? $partners[0]['url'] : '';
+
+            // 4) Preload sabeel by year
+            $sabeelByYear = EstablishmentSabeelModel::where('establishment_id', $est->id)
+                ->get()
+                ->keyBy('year');
+
+            // 5) Paid receipts by year
+            $paidByYear = ReceiptModel::select('year', DB::raw('SUM(amount) as paid'))
+                ->where('establishment_id', $est->id)
+                ->where('status', 'active')
+                ->groupBy('year')
+                ->pluck('paid', 'year');
+
+            // 6) sabeel_details year wise
+            $sabeelDetails = [];
+            $curSabeel = 0; $curDue = 0; $prevDue = 0;
+
+            foreach ($yearsList as $yr) {
+                $sabeelAmt = (int) ($sabeelByYear->get($yr)->sabeel ?? 0);
+                $paid      = (float) ($paidByYear[$yr] ?? 0);
+                $due       = max(0, $sabeelAmt - $paid);
+
+                $sabeelDetails[] = [
+                    'year'   => $this->yearLabel($yr),
+                    'sabeel' => (string) $sabeelAmt,
+                    'due'    => (string) $due,
+                ];
+
+                if ($yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
+                if ($yr === $prevYear)    { $prevDue  = $due; }
+            }
+
+            // 7) Final response object
+            $data = [
+                'id'               => (string) $est->id,
+                'establishment_id' => (string) $est->establishment_no,
+                'url'              => (string) $topUrl,
+
+                'name'             => (string) ($est->name ?? ''),
+                'address'          => (string) ($est->address ?? ''),
+
+                'establishment' => [
+                    'sabeel'   => (string) $curSabeel,
+                    'due'      => (string) $curDue,
+                    'prev_due' => (string) $prevDue,
+                ],
+
+                'sabeel_details' => $sabeelDetails,
+                'partners'       => $partners,
+            ];
+
+            return $this->success('Data fetched successfully', ['data' => $data], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Establishment overview fetch failed');
+        }
+    }
+
+    /* ---------------- helpers for overview ---------------- */
+
+    private function resolveYearsForOverview(?int $focusYear = null): array
+    {
+        // If focusYear passed, use it as current
+        if ($focusYear) {
+            $current = $focusYear;
+            return [$current, $current - 1, [$current, $current - 1, $current - 2]];
+        }
+
+        // Else use t_year (if exists), fallback to system year
+        if (!Schema::hasTable('t_year')) {
+            $current = (int) date('Y');
+            return [$current, $current - 1, [$current, $current - 1, $current - 2]];
+        }
+
+        $current = (int) YearModel::where('is_current', 1)->value('year');
+        if (!$current) $current = (int) YearModel::max('year');
+        if (!$current) $current = (int) date('Y');
+
+        // take top 3 years from table (fallback to 3-year window)
+        $years = YearModel::orderBy('year', 'desc')->pluck('year')->take(3)->toArray();
+        if (count($years) < 3) {
+            $years = [$current, $current - 1, $current - 2];
+        }
+
+        $prev = collect($years)->filter(fn($y) => $y < $current)->first();
+        $prev = $prev ? (int)$prev : ($current - 1);
+
+        return [$current, $prev, $years];
+    }
+
+    private function yearLabel(int $year): string
+    {
+        $next = substr((string)($year + 1), -2);
+        return "{$year}-{$next}";
+    }
+
     /* ---------------- Helpers ---------------- */
 
     private function generateUniqueEstablishmentNo(): string

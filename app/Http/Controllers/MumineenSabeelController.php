@@ -77,27 +77,27 @@ class MumineenSabeelController extends Controller
     public function fetch(Request $request, $family_id, $id = null)
     {
         try {
-            // validate family exists
             $hof = $this->getHofByFamilyId($family_id);
-            if (!$hof) {
-                return $this->error('Invalid family_id. Family not found.', 404);
-            }
+            if (!$hof) return $this->error('Invalid family_id. Family not found.', 404);
 
-            // if id is passed, ensure that entry belongs to this family (for correctness)
             if ($id !== null) {
                 $entry = MumineenSabeelModel::where('id', $id)
                     ->where('family_id', $family_id)
                     ->first();
 
-                if (!$entry) {
-                    return $this->error('Sabeel entry not found for this family.', 404);
-                }
+                if (!$entry) return $this->error('Sabeel entry not found for this family.', 404);
             }
 
-            $payload = $this->buildFamilySummaryPayload((int)$family_id);
+            // build details only
+            [, , $yearsList] = $this->resolveYears();
+            $sabeelDetails = $this->buildFamilySabeelDetails((int)$family_id, $yearsList);
 
-            // Your required format says: { "data": { ... } }
-            // With ApiResponse trait, it becomes: { code,status,message,data: {..} }
+            $payload = [
+                [
+                    'sabeel_details' => $sabeelDetails
+                ]
+            ];
+
             return $this->success('Data fetched successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -207,20 +207,31 @@ class MumineenSabeelController extends Controller
 
     private function resolveYears(): array
     {
-        // Safe fallback if t_year missing
+        // returns: [$currentYear, $prevYear, $yearsList]
         if (!Schema::hasTable('t_year')) {
             $cur = (int) date('Y');
-            return [$cur, $cur - 1];
+            return [$cur, $cur - 1, [$cur, $cur - 1, $cur - 2]];
         }
 
         $currentYear = (int) YearModel::where('is_current', 1)->value('year');
         if (!$currentYear) $currentYear = (int) YearModel::max('year');
         if (!$currentYear) $currentYear = (int) date('Y');
 
-        $prevYear = (int) YearModel::where('year', '<', $currentYear)->max('year');
-        if (!$prevYear) $prevYear = $currentYear - 1;
+        $yearsList = YearModel::orderBy('year', 'desc')->pluck('year')->take(3)->toArray();
+        if (count($yearsList) < 3) {
+            $yearsList = [$currentYear, $currentYear - 1, $currentYear - 2];
+        }
 
-        return [$currentYear, $prevYear];
+        $prevYear = collect($yearsList)->filter(fn($y) => $y < $currentYear)->first();
+        $prevYear = $prevYear ? (int)$prevYear : ($currentYear - 1);
+
+        return [$currentYear, $prevYear, $yearsList];
+    }
+
+    private function yearLabel(int $year): string
+    {
+        $next = substr((string)($year + 1), -2);
+        return "{$year}-{$next}";
     }
 
     private function familyDueForYear(int $family_id, int $year): array
@@ -289,12 +300,14 @@ class MumineenSabeelController extends Controller
     {
         $hof = $this->getHofByFamilyId($family_id);
 
-        [$currentYear, $prevYear] = $this->resolveYears();
+        [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
         [$curSabeel, $curDue] = $this->familyDueForYear($family_id, $currentYear);
         [$prevSabeel, $prevDue] = $this->familyDueForYear($family_id, $prevYear);
 
         [$estSabeel, $estDue, $estPrevDue] = $this->establishmentSummaryForFamily($family_id, $currentYear, $prevYear);
+
+        $sabeelDetails = $this->buildFamilySabeelDetails($family_id, $yearsList);
 
         return [
             'id'        => (string) ($hof->id ?? ''),
@@ -313,11 +326,31 @@ class MumineenSabeelController extends Controller
                 'prev_due' => (string) $prevDue,
             ],
 
+            // ✅ NEW: year wise list
+            'sabeel_details' => $sabeelDetails,
+
             'establishment' => [
                 'sabeel'   => (string) $estSabeel,
                 'due'      => (string) $estDue,
                 'prev_due' => (string) $estPrevDue,
             ],
         ];
+    }
+
+    private function buildFamilySabeelDetails(int $family_id, array $yearsList): array
+    {
+        $details = [];
+
+        foreach ($yearsList as $yr) {
+            [$sabeel, $due] = $this->familyDueForYear($family_id, (int)$yr);
+
+            $details[] = [
+                'year'   => $this->yearLabel((int)$yr),
+                'sabeel' => (string) $sabeel,
+                'due'    => (string) $due,
+            ];
+        }
+
+        return $details;
     }
 }

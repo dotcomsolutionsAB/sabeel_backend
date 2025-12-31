@@ -158,6 +158,199 @@ class MumineenController extends Controller
         }
     }
 
+    public function edit(Request $request, $id)
+    {
+        try {
+            $m = MumineenModel::where('hof_type', 'HOF')->find($id);
+
+            if (!$m) {
+                return $this->error('Mumineen not found.', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'its'        => 'required|string|max:255|unique:t_mumineen,its,' . $m->id,
+                'name'       => 'required|string|max:255',
+                'gender'     => 'required|in:male,female',
+
+                'sector'     => 'nullable|string|max:255',
+                'sub_sector' => 'nullable|string|max:255',
+                'mobile'     => 'nullable|string|max:255',
+                'email'      => 'nullable|email|max:255',
+
+                // optional if you want to allow status change:
+                // 'status'  => 'nullable|in:active,closed',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $m->update([
+                'its'        => $request->its,
+                'name'       => $request->name,
+                'gender'     => $request->gender,
+
+                'sector'     => $request->sector ?? null,
+                'sub_sector' => $request->sub_sector ?? null,
+                'mobile'     => $request->mobile ?? null,
+                'email'      => $request->email ?? null,
+
+                // 'status'  => $request->status ?? $m->status,
+            ]);
+
+            return $this->success('Data saved successfully', $m, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Mumineen update failed');
+        }
+    }
+
+    public function delete($id)
+    {
+        try {
+            $m = MumineenModel::where('hof_type', 'HOF')->find($id);
+
+            if (!$m) {
+                return $this->error('Mumineen not found.', 404);
+            }
+
+            $m->status = 'closed';
+            $m->save();
+
+            return $this->success('Data deleted successfully', [], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Mumineen delete failed');
+        }
+    }
+
+
+    public function fetch_family_overview($family_id, $id = null)
+    {
+        try {
+            // 1) Resolve familyId + HOF row
+            if ($id !== null) {
+                // If id passed, treat it as t_mumineen.id
+                $hof = MumineenModel::where('hof_type', 'HOF')->find($id);
+                if (!$hof) return $this->error('Mumineen not found.', 404);
+
+                $familyId = (int) $hof->family_id;
+            } else {
+                // Else treat param as 10-digit family_id
+                $familyId = (int) $family_id;
+
+                $hof = MumineenModel::where('family_id', $familyId)
+                    ->where('hof_type', 'HOF')
+                    ->first();
+
+                if (!$hof) return $this->error('Family not found.', 404);
+            }
+
+            // 2) Resolve years
+            [$currentYear, $prevYear] = $this->resolveYearsSimple();
+
+            // 3) FAMILY sabeel + due
+            [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
+            [$famPrevSabeel, $famPrevDue] = $this->familyDueForYear($familyId, $prevYear);
+
+            // 4) Establishment totals (all linked establishments)
+            $estIds = MumineenEstablishmentModel::where('family_id', $familyId)
+                ->pluck('establishment_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estIds, $currentYear);
+            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estIds, $prevYear);
+
+            // 5) Response payload (as you required)
+            $data = [
+                'id'        => (string) $hof->id,
+                'family_id' => (string) $familyId,
+                'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+
+                'name'   => (string) ($hof->name ?? ''),
+                'its'    => (string) ($hof->its ?? ''),
+                'sector' => (string) ($hof->sector ?? ''),
+                'mobile' => (string) ($hof->mobile ?? ''),
+                'email'  => (string) ($hof->email ?? ''),
+
+                'sabeel' => [
+                    'sabeel'   => (string) $famCurSabeel,
+                    'due'      => (string) $famCurDue,
+                    'prev_due' => (string) $famPrevDue,
+                ],
+
+                'establishment' => [
+                    'sabeel'   => (string) $estCurSabeel,
+                    'due'      => (string) $estCurDue,
+                    'prev_due' => (string) $estPrevDue,
+                ],
+            ];
+
+            // Your ApiResponse -> returns {code,status,message,data:{...}}
+            return $this->success('Data fetched successfully', ['data' => $data], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Family overview fetch failed');
+        }
+    }
+
+    /* ---------------- helpers for overview ---------------- */
+
+    private function resolveYearsSimple(): array
+    {
+        // safe fallback if t_year missing
+        if (!Schema::hasTable('t_year')) {
+            $cur = (int) date('Y');
+            return [$cur, $cur - 1];
+        }
+
+        $cur = (int) YearModel::where('is_current', 1)->value('year');
+        if (!$cur) $cur = (int) YearModel::max('year');
+        if (!$cur) $cur = (int) date('Y');
+
+        $prev = (int) YearModel::where('year', '<', $cur)->max('year');
+        if (!$prev) $prev = $cur - 1;
+
+        return [$cur, $prev];
+    }
+
+    private function familyDueForYear(int $familyId, int $year): array
+    {
+        $sabeel = (int) MumineenSabeelModel::where('family_id', $familyId)
+            ->where('year', $year)
+            ->value('sabeel');
+
+        $paid = (float) ReceiptModel::where('family_id', $familyId)
+            ->where('year', $year)
+            ->where('status', 'active')
+            ->sum('amount');
+
+        $due = max(0, $sabeel - $paid);
+
+        return [$sabeel, $due];
+    }
+
+    private function establishmentTotalsDueForYear(array $estIds, int $year): array
+    {
+        if (empty($estIds)) return [0, 0];
+
+        $sabeel = (int) EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+            ->where('year', $year)
+            ->sum('sabeel');
+
+        $paid = (float) ReceiptModel::whereIn('establishment_id', $estIds)
+            ->where('year', $year)
+            ->where('status', 'active')
+            ->sum('amount');
+
+        $due = max(0, $sabeel - $paid);
+
+        return [$sabeel, $due];
+    }
+
     /* ----------------- Helpers ----------------- */
 
     private function generateUniqueFamilyId(): int
