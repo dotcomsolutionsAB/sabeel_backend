@@ -40,12 +40,14 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     });
 
     // mumineen-sabeel route
-    Route::prefix('family_details/{family_id}')->group(function () {
-        Route::post('/create', [MumineenSabeelController::class, 'create']);
-        Route::post('/retrieve/{id?}', [MumineenSabeelController::class, 'fetch']);
-        Route::post('/update/{id}', [MumineenSabeelController::class, 'edit']);
-        Route::delete('/delete/{id}', [MumineenSabeelController::class, 'delete']);
+    Route::prefix('family_sabeel')->group(function () {
+        Route::post('/create/{family_id}', [MumineenSabeelController::class, 'create']);
+        Route::post('/retrieve/{family_id}/{id?}', [MumineenSabeelController::class, 'fetch']);
+        Route::post('/update/{family_id}/{id}', [MumineenSabeelController::class, 'edit']);
+        Route::delete('/delete/{family_id}/{id}', [MumineenSabeelController::class, 'delete']);
     });
+
+        Route::post('/family_details/{family_id}/{id?}', [MumineenSabeelController::class, 'fetch_family_details']);
 
     // establishment route
     Route::prefix('establishment')->group(function () {
