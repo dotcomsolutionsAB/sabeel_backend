@@ -16,7 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('family_id');
             $table->string('its');
 
-            $table->unsignedBigInteger('establishment_no');
+            $table->unsignedBigInteger('establishment_id');
             $table->unsignedBigInteger('updated_by');
             $table->timestamps();
 

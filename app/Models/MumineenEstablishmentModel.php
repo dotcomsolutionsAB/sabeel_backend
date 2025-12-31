@@ -13,19 +13,19 @@ class MumineenEstablishmentModel extends Model
     protected $fillable = [
         'family_id',
         'its',
-        'establishment_no',
+        'establishment_id',
         'updated_by',
     ];
 
     protected $casts = [
         'family_id'        => 'integer',
-        'establishment_no' => 'integer',
+        'establishment_id' => 'integer',
         'updated_by'       => 'integer',
     ];
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(EstablishmentModel::class, 'establishment_no');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_id');
     }
 
     public function updatedBy(): BelongsTo

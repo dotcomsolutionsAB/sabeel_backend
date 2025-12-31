@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('t_establishment', function (Blueprint $table) {
             $table->id();
-            $table->string('establishment_no');
+            $table->string('establishment_id');
             $table->string('name');
             $table->text('address');
 
@@ -23,7 +23,7 @@ return new class extends Migration
             $table->longText('remarks')->nullable();
             $table->timestamps();
 
-            $table->unique('establishment_no');
+            $table->unique('establishment_id');
         });
     }
 

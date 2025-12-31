@@ -17,10 +17,10 @@ class MumineenEstablishmentController extends Controller
 
     /**
      * CREATE
-     * POST /partners/create/{establishment_no}
+     * POST /partners/create/{establishment_id}
      * Body: { "its": "12345678" }
      */
-    public function create(Request $request, $establishment_no)
+    public function create(Request $request, $establishment_id)
     {
         try {
             $validator = Validator::make($request->all(), [
@@ -31,8 +31,8 @@ class MumineenEstablishmentController extends Controller
                 return $this->validation($validator);
             }
 
-            // ✅ validate establishment using establishment_no (not id)
-            $est = EstablishmentModel::where('establishment_no', $establishment_no)->first();
+            // ✅ validate establishment using establishment_id (not id)
+            $est = EstablishmentModel::where('establishment_id', $establishment_id)->first();
             if (!$est) {
                 return $this->error('Invalid establishment.', 404);
             }
@@ -46,7 +46,7 @@ class MumineenEstablishmentController extends Controller
             // prevent duplicate mapping
             $exists = MumineenEstablishmentModel::where([
                 'its'              => $mumineen->its,
-                'establishment_no' => $establishment_no,
+                'establishment_id' => $establishment_id,
             ])->exists();
 
             if ($exists) {
@@ -56,7 +56,7 @@ class MumineenEstablishmentController extends Controller
             $row = MumineenEstablishmentModel::create([
                 'family_id'        => $mumineen->family_id,
                 'its'              => $mumineen->its,
-                'establishment_no' => (int) $establishment_no,
+                'establishment_id' => (int) $establishment_id,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
@@ -69,9 +69,9 @@ class MumineenEstablishmentController extends Controller
 
     /**
      * FETCH
-     * POST /partners/retrieve/{establishment_no}/{id?}
+     * POST /partners/retrieve/{establishment_id}/{id?}
      */
-    public function fetch(Request $request, $establishment_no, $id = null)
+    public function fetch(Request $request, $establishment_id, $id = null)
     {
         try {
             // SINGLE
@@ -88,7 +88,7 @@ class MumineenEstablishmentController extends Controller
 
             // LIST
             $rows = MumineenEstablishmentModel::with('mumineen')
-                ->where('establishment_no', (int)$establishment_no)
+                ->where('establishment_id', (int)$establishment_id)
                 ->orderBy('id', 'desc')
                 ->get();
 

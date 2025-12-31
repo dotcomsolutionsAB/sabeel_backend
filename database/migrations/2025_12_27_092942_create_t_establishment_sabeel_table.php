@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('t_establishment_sabeel', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('establishment_no');
+            $table->unsignedBigInteger('establishment_id');
             $table->integer('year');
             $table->unsignedBigInteger('sabeel');
             $table->unsignedBigInteger('updated_by');

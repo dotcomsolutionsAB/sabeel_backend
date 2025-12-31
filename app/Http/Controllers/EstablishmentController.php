@@ -23,7 +23,7 @@ class EstablishmentController extends Controller
     /**
      * CREATE
      * POST /establishment/create
-     * Auto-generate establishment_no (10 digit unique)
+     * Auto-generate establishment_id (10 digit unique)
      */
     public function create(Request $request)
     {
@@ -43,7 +43,7 @@ class EstablishmentController extends Controller
             $estNo = $this->generateUniqueEstablishmentNo();
 
             $row = EstablishmentModel::create([
-                'establishment_no' => $estNo,
+                'establishment_id' => $estNo,
                 'name'             => $request->name,
                 'address'          => $request->address,
                 'status'           => $request->status,
@@ -90,19 +90,19 @@ class EstablishmentController extends Controller
             $filter = trim((string) $request->input('filter', ''));
 
             $q = EstablishmentModel::query()
-                ->select('id','establishment_no','name','address','type','status')
+                ->select('id','establishment_id','name','address','type','status')
                 ->orderBy('id','desc');
 
-            // SEARCH: in establishment name/address/establishment_no AND partner mumineen (its/name/sector) AND family member its
+            // SEARCH: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
             if ($search !== '') {
                 $q->where(function($w) use ($search) {
                     $w->where('name', 'like', "%{$search}%")
                       ->orWhere('address', 'like', "%{$search}%")
-                      ->orWhere('establishment_no', 'like', "%{$search}%")
+                      ->orWhere('establishment_id', 'like', "%{$search}%")
                       ->orWhereExists(function($sub) use ($search) {
                           $sub->from('t_mumineen_establishment as me')
                               ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                              ->whereColumn('me.establishment_no', 't_establishment.id')
+                              ->whereColumn('me.establishment_id', 't_establishment.id')
                               ->where(function($x) use ($search) {
                                   $x->where('m.its', 'like', "%{$search}%")
                                     ->orWhere('m.name', 'like', "%{$search}%")
@@ -201,7 +201,7 @@ class EstablishmentController extends Controller
     {
         do {
             $no = (string) random_int(1000000000, 9999999999);
-        } while (EstablishmentModel::where('establishment_no', $no)->exists());
+        } while (EstablishmentModel::where('establishment_id', $no)->exists());
 
         return $no;
     }
@@ -234,7 +234,7 @@ class EstablishmentController extends Controller
         // not_tagged => no partners linked
         if ($filter === 'not_tagged') {
             return $q->whereNotIn('id', function($sub){
-                $sub->from('t_mumineen_establishment')->select('establishment_no');
+                $sub->from('t_mumineen_establishment')->select('establishment_id');
             });
         }
 
@@ -242,7 +242,7 @@ class EstablishmentController extends Controller
         if ($filter === 'new_takhmeen_pending') {
             return $q->whereNotIn('id', function($sub) use ($currentYear) {
                 $sub->from('t_establishment_sabeel')
-                    ->select('establishment_no')
+                    ->select('establishment_id')
                     ->where('year', $currentYear);
             });
         }
@@ -253,14 +253,14 @@ class EstablishmentController extends Controller
 
             return $q->whereIn('id', function($sub) use ($year) {
                 $sub->from('t_establishment_sabeel as es')
-                    ->select('es.establishment_no')
+                    ->select('es.establishment_id')
                     ->leftJoin('t_receipts as r', function($j) use ($year) {
-                        $j->on('r.establishment_no','=','es.establishment_no')
+                        $j->on('r.establishment_id','=','es.establishment_id')
                           ->where('r.year','=',$year)
                           ->where('r.status','=','active');
                     })
                     ->where('es.year', $year)
-                    ->groupBy('es.establishment_no','es.sabeel')
+                    ->groupBy('es.establishment_id','es.sabeel')
                     ->havingRaw('(es.sabeel - COALESCE(SUM(r.amount),0)) > 0');
             });
         }
@@ -274,22 +274,22 @@ class EstablishmentController extends Controller
         if (empty($estIds)) return [];
 
         // Establishment sabeel entries
-        $es = EstablishmentSabeelModel::whereIn('establishment_no', $estIds)
+        $es = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
             ->get()
-            ->groupBy('establishment_no');
+            ->groupBy('establishment_id');
 
         // Receipts paid by year for establishments
-        $paid = ReceiptModel::select('establishment_no','year', DB::raw('SUM(amount) as paid'))
-            ->whereIn('establishment_no', $estIds)
+        $paid = ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
+            ->whereIn('establishment_id', $estIds)
             ->where('status','active')
-            ->groupBy('establishment_no','year')
+            ->groupBy('establishment_id','year')
             ->get()
-            ->groupBy('establishment_no');
+            ->groupBy('establishment_id');
 
         // Partners via links (family_id) => get HOF data from t_mumineen
-        $links = MumineenEstablishmentModel::whereIn('establishment_no', $estIds)
+        $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)
             ->get()
-            ->groupBy('establishment_no');
+            ->groupBy('establishment_id');
 
         $familyIds = $links->flatten()->pluck('family_id')->filter()->unique()->values()->all();
 
@@ -330,7 +330,7 @@ class EstablishmentController extends Controller
 
             $out[] = [
                 'id'               => (string) $e->id,
-                'establishment_no' => (string) $e->establishment_no,
+                'establishment_id' => (string) $e->establishment_id,
                 'name'             => (string) $e->name,
                 'address'          => (string) $e->address,
 

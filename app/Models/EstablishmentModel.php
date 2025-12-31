@@ -11,7 +11,7 @@ class EstablishmentModel extends Model
     protected $table = 't_establishment';
 
     protected $fillable = [
-        'establishment_no',
+        'establishment_id',
         'name',
         'address',
         'status',
@@ -27,16 +27,16 @@ class EstablishmentModel extends Model
 
     public function sabeelEntries(): HasMany
     {
-        return $this->hasMany(EstablishmentSabeelModel::class, 'establishment_no');
+        return $this->hasMany(EstablishmentSabeelModel::class, 'establishment_id');
     }
 
     public function mumineenLinks(): HasMany
     {
-        return $this->hasMany(MumineenEstablishmentModel::class, 'establishment_no');
+        return $this->hasMany(MumineenEstablishmentModel::class, 'establishment_id');
     }
 
     public function receipts(): HasMany
     {
-        return $this->hasMany(ReceiptModel::class, 'establishment_no');
+        return $this->hasMany(ReceiptModel::class, 'establishment_id');
     }
 }

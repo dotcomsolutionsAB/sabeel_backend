@@ -19,12 +19,12 @@ class EstablishmentSabeelController extends Controller
 {
     use ApiResponse;
 
-    public function create(Request $request, $establishment_no)
+    public function create(Request $request, $establishment_id)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_no);
+            $est = $this->resolveEstablishment($establishment_id);
             if (!$est) {
-                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+                return $this->error('Invalid establishment_id. Establishment not found.', 404);
             }
 
             $validator = Validator::make($request->all(), [
@@ -33,7 +33,7 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $exists = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
+            $exists = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
                 ->where('year', $request->year)
                 ->exists();
 
@@ -42,13 +42,13 @@ class EstablishmentSabeelController extends Controller
             }
 
             EstablishmentSabeelModel::create([
-                'establishment_no' => (int) $establishment_no,
+                'establishment_id' => (int) $establishment_id,
                 'year'             => (int) $request->year,
                 'sabeel'           => (int) $request->sabeel,
                 'updated_by'       => (int) Auth::id(),
             ]);
 
-            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_id);
             return $this->success('Data saved successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -56,15 +56,15 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    public function fetch(Request $request, $establishment_no, $id = null)
+    public function fetch(Request $request, $establishment_id, $id = null)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_no);
+            $est = $this->resolveEstablishment($establishment_id);
             if (!$est) {
-                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+                return $this->error('Invalid establishment_id. Establishment not found.', 404);
             }
 
-            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_id);
 
             // 👇 wrapping in array is IMPORTANT
             return $this->success('Data fetched successfully', [$payload], 200);
@@ -75,16 +75,16 @@ class EstablishmentSabeelController extends Controller
     }
 
 
-    public function edit(Request $request, $establishment_no, $id)
+    public function edit(Request $request, $establishment_id, $id)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_no);
+            $est = $this->resolveEstablishment($establishment_id);
             if (!$est) {
-                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+                return $this->error('Invalid establishment_id. Establishment not found.', 404);
             }
 
             $row = EstablishmentSabeelModel::where('id', $id)
-                ->where('establishment_no', $establishment_no)
+                ->where('establishment_id', $establishment_id)
                 ->first();
 
             if (!$row) {
@@ -97,7 +97,7 @@ class EstablishmentSabeelController extends Controller
             ]);
             if ($validator->fails()) return $this->validation($validator);
 
-            $dup = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
+            $dup = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
                 ->where('year', $request->year)
                 ->where('id', '!=', $row->id)
                 ->exists();
@@ -111,7 +111,7 @@ class EstablishmentSabeelController extends Controller
             $row->updated_by = (int) Auth::id();
             $row->save();
 
-            $payload = $this->buildEstablishmentSummaryPayload($establishment_no);
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_id);
             return $this->success('Data saved successfully', $payload, 200);
 
         } catch (\Throwable $e) {
@@ -119,16 +119,16 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    public function delete($establishment_no, $id)
+    public function delete($establishment_id, $id)
     {
         try {
-            $est = $this->resolveEstablishment($establishment_no);
+            $est = $this->resolveEstablishment($establishment_id);
             if (!$est) {
-                return $this->error('Invalid establishment_no. Establishment not found.', 404);
+                return $this->error('Invalid establishment_id. Establishment not found.', 404);
             }
 
             $row = EstablishmentSabeelModel::where('id', $id)
-                ->where('establishment_no', $establishment_no)
+                ->where('establishment_id', $establishment_id)
                 ->first();
 
             if (!$row) {
@@ -144,12 +144,12 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
-    // public function delete(Request $request, $establishment_no)
+    // public function delete(Request $request, $establishment_id)
     // {
     //     try {
-    //         $est = $this->resolveEstablishment($establishment_no);
+    //         $est = $this->resolveEstablishment($establishment_id);
     //         if (!$est) {
-    //             return $this->error('Invalid establishment_no. Establishment not found.', 404);
+    //             return $this->error('Invalid establishment_id. Establishment not found.', 404);
     //         }
 
     //         // ✅ validate year from form-data
@@ -161,7 +161,7 @@ class EstablishmentSabeelController extends Controller
     //             return $this->validation($validator);
     //         }
 
-    //         $row = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
+    //         $row = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
     //             ->where('year', (int) $request->year)
     //             ->first();
 
@@ -179,24 +179,24 @@ class EstablishmentSabeelController extends Controller
     // }
 
 
-    private function resolveEstablishment($establishment_no): ?EstablishmentModel
+    private function resolveEstablishment($establishment_id): ?EstablishmentModel
     {
-        return EstablishmentModel::where('establishment_no', $establishment_no)->first();
+        return EstablishmentModel::where('establishment_id', $establishment_id)->first();
     }
 
     /**
      * Build establishment sabeel summary payload
      * Uses PRIMARY KEY id internally
      */
-    private function buildEstablishmentSummaryPayload(int $establishment_no): array
+    private function buildEstablishmentSummaryPayload(int $establishment_id): array
     {
-        $rows = EstablishmentSabeelModel::where('establishment_no', $establishment_no)
+        $rows = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
             ->orderBy('year', 'desc')
             ->get();
 
-        $details = $rows->map(function ($r) use ($establishment_no) {
+        $details = $rows->map(function ($r) use ($establishment_id) {
 
-            $paid = $this->paidForYear($establishment_no, (int)$r->year);
+            $paid = $this->paidForYear($establishment_id, (int)$r->year);
             $due  = max(0, (int)$r->sabeel - $paid);
 
             return [
@@ -217,9 +217,9 @@ class EstablishmentSabeelController extends Controller
         return $year . '-' . substr((string)($year + 1), -2);
     }
 
-    private function paidForYear(int $establishment_no, int $year): int
+    private function paidForYear(int $establishment_id, int $year): int
     {
-        return (int) ReceiptModel::where('establishment_no', $establishment_no)
+        return (int) ReceiptModel::where('establishment_id', $establishment_id)
             ->where('year', $year)
             ->where('status', 'active')
             ->sum('amount');

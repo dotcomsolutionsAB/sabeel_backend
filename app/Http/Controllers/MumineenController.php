@@ -256,20 +256,20 @@ class MumineenController extends Controller
             ->get()
             ->groupBy('family_id');
 
-        $estIds = $links->flatten()->pluck('establishment_no')->filter()->unique()->values()->all();
+        $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
 
         // Establishment sabeel
-        $es = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_no', $estIds)
+        $es = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
             ->get()
-            ->groupBy('establishment_no');
+            ->groupBy('establishment_id');
 
         // Establishment receipts paid by year
-        $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_no','year', DB::raw('SUM(amount) as paid'))
-            ->whereIn('establishment_no', $estIds)
+        $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
+            ->whereIn('establishment_id', $estIds)
             ->where('status','active')
-            ->groupBy('establishment_no','year')
+            ->groupBy('establishment_id','year')
             ->get()
-            ->groupBy('establishment_no');
+            ->groupBy('establishment_id');
 
         $out = [];
 
@@ -307,7 +307,7 @@ class MumineenController extends Controller
             $familyLinks = $links->get($m->family_id) ?? collect();
 
             foreach ($familyLinks as $lnk) {
-                $estId = (int) $lnk->establishment_no;
+                $estId = (int) $lnk->establishment_id;
                 $estName = optional($lnk->establishment)->name ?? '';
 
                 $estSabeelCur = (int) optional($es->get($estId))
@@ -331,7 +331,7 @@ class MumineenController extends Controller
                 $estDuePrev = max(0, $estSabeelPrev - $estPaidPrev);
 
                 $estDetails[] = [
-                    'establishment_no' => (string)$estId,
+                    'establishment_id' => (string)$estId,
                     'name'             => (string)$estName,
                     'due'              => (string)$estDueCur,
                 ];

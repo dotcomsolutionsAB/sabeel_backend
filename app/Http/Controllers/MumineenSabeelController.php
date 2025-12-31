@@ -242,7 +242,7 @@ class MumineenSabeelController extends Controller
     private function establishmentSummaryForFamily(int $family_id, int $currentYear, int $prevYear): array
     {
         $estIds = MumineenEstablishmentModel::where('family_id', $family_id)
-            ->pluck('establishment_no')
+            ->pluck('establishment_id')
             ->filter()
             ->unique()
             ->values()
@@ -255,22 +255,22 @@ class MumineenSabeelController extends Controller
         $curSabeelSum = 0; $curDueSum = 0; $prevDueSum = 0;
 
         foreach ($estIds as $estId) {
-            $curSabeel = (int) EstablishmentSabeelModel::where('establishment_no', $estId)
+            $curSabeel = (int) EstablishmentSabeelModel::where('establishment_id', $estId)
                 ->where('year', $currentYear)
                 ->value('sabeel');
 
-            $curPaid = (float) ReceiptModel::where('establishment_no', $estId)
+            $curPaid = (float) ReceiptModel::where('establishment_id', $estId)
                 ->where('year', $currentYear)
                 ->where('status', 'active')
                 ->sum('amount');
 
             $curDue = max(0, $curSabeel - $curPaid);
 
-            $prevSabeel = (int) EstablishmentSabeelModel::where('establishment_no', $estId)
+            $prevSabeel = (int) EstablishmentSabeelModel::where('establishment_id', $estId)
                 ->where('year', $prevYear)
                 ->value('sabeel');
 
-            $prevPaid = (float) ReceiptModel::where('establishment_no', $estId)
+            $prevPaid = (float) ReceiptModel::where('establishment_id', $estId)
                 ->where('year', $prevYear)
                 ->where('status', 'active')
                 ->sum('amount');
