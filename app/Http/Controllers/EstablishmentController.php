@@ -199,8 +199,8 @@ class EstablishmentController extends Controller
     {
         try {
 
-            // 1) establishment_id param is establishment_no (10 digit)
-            $est = EstablishmentModel::where('establishment_no', $establishment_id)->first();
+            // 1) establishment_id param is establishment_id (10 digit)
+            $est = EstablishmentModel::where('establishment_id', $establishment_id)->first();
             if (!$est) {
                 return $this->error('Establishment not found.', 404);
             }
@@ -285,7 +285,7 @@ class EstablishmentController extends Controller
             // 7) Final response object
             $data = [
                 'id'               => (string) $est->id,
-                'establishment_id' => (string) $est->establishment_no,
+                'establishment_id' => (string) $est->establishment_id,
                 'url'              => (string) $topUrl,
 
                 'name'             => (string) ($est->name ?? ''),
