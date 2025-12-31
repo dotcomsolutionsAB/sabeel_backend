@@ -225,7 +225,6 @@ class MumineenController extends Controller
         }
     }
 
-
     public function fetch_family_details($family_id, $id = null)
     {
         try {
@@ -255,15 +254,21 @@ class MumineenController extends Controller
             [$famPrevSabeel, $famPrevDue] = $this->familyDueForYear($familyId, $prevYear);
 
             // 4) Establishment totals (all linked establishments)
-            $estIds = MumineenEstablishmentModel::where('family_id', $familyId)
-                ->pluck('establishment_id')
+            $estCodes = MumineenEstablishmentModel::where('family_id', $familyId)
+                ->pluck('establishment_id')     // ✅ these are 10-digit business codes
                 ->filter()
                 ->unique()
                 ->values()
                 ->all();
 
-            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estIds, $currentYear);
-            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estIds, $prevYear);
+            // Convert business codes -> primary ids (t_establishment.id)
+            $estPkIds = EstablishmentModel::whereIn('establishment_id', $estCodes)
+                ->pluck('id')
+                ->toArray();
+
+            // Now calculate totals using PK ids
+            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estPkIds, $currentYear);
+            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estPkIds, $prevYear);
 
             // 5) Response payload (as you required)
             $data = [
