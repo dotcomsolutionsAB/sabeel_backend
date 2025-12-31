@@ -254,22 +254,17 @@ class MumineenController extends Controller
             [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
             [$famPrevSabeel, $famPrevDue] = $this->familyDueForYear($familyId, $prevYear);
 
-            // 4) Establishment totals (all linked establishments)
+            // 4) Establishment totals (all linked establishments) - use business codes
             $estCodes = MumineenEstablishmentModel::where('family_id', $familyId)
-                ->pluck('establishment_id')     // ✅ these are 10-digit business codes
+                ->pluck('establishment_id')     // ✅ 10-digit business codes
                 ->filter()
                 ->unique()
                 ->values()
                 ->all();
 
-            // Convert business codes -> primary ids (t_establishment.id)
-            $estPkIds = EstablishmentModel::whereIn('establishment_id', $estCodes)
-                ->pluck('id')
-                ->toArray();
-
-            // Now calculate totals using PK ids
-            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estPkIds, $currentYear);
-            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estPkIds, $prevYear);
+            // Now calculate totals using business codes (NO conversion to pk)
+            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estCodes, $currentYear);
+            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estCodes, $prevYear);
 
             // 5) Response payload (as you required)
             $data = [
