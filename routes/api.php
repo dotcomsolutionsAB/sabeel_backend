@@ -47,7 +47,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::delete('/delete/{family_id}/{id}', [MumineenSabeelController::class, 'delete']);
     });
 
-        Route::get('/family_details/{family_id}/{id?}', [MumineenController::class, 'fetch_family_details']);
+        Route::get('/family_details/{family_id}/retrieve/{id?}', [MumineenController::class, 'fetch_family_details']);
 
     // establishment route
     Route::prefix('establishment')->group(function () {
@@ -65,7 +65,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::delete('/delete/{id}', [MumineenEstablishmentController::class, 'delete']);
     });
 
-        Route::get('/establishment_details/overview/{establishment_id}/{id?}', [EstablishmentController::class, 'fetch_establishment_details']);
+        Route::get('/establishment_details/overview/{establishment_id}/retrieve/{id?}', [EstablishmentController::class, 'fetch_establishment_details']);
 
     // establishment-sabeel route
     Route::prefix('establishment_sabeel')->group(function () {
