@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\MumineenEstablishmentModel;
+use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
