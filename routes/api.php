@@ -12,6 +12,7 @@ use App\Http\Controllers\CounterController;
 use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\YearController;
 use App\Http\Controllers\MumineenEstablishmentController;
+use App\Http\Controllers\DashboardController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -19,7 +20,12 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
-    Route::get('/dashboard', [UserController::class, 'summary']);
+    // dashboard route
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/retrieve', [DashboardController::class, 'retrieve']);
+        Route::post('/retrieve_sabeel_due', [DashboardController::class, 'retrieveSabeelDue']);
+    });
+
     // users route
     Route::prefix('users')->group(function () {
         Route::post('/create', [UserController::class, 'create']);

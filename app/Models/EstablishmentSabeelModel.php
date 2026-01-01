@@ -26,11 +26,11 @@ class EstablishmentSabeelModel extends Model
 
     public function establishment(): BelongsTo
     {
-        return $this->belongsTo(EstablishmentModel::class, 'establishment_id');
+        return $this->belongsTo(EstablishmentModel::class, 'establishment_id', 'establishment_id');
     }
 
     public function updatedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'updated_by');
+        return $this->belongsTo(User::class, 'updated_by', 'id');
     }
 }

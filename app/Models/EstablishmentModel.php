@@ -27,16 +27,16 @@ class EstablishmentModel extends Model
 
     public function sabeelEntries(): HasMany
     {
-        return $this->hasMany(EstablishmentSabeelModel::class, 'establishment_id');
+        return $this->hasMany(EstablishmentSabeelModel::class, 'establishment_id', 'establishment_id');
     }
 
     public function mumineenLinks(): HasMany
     {
-        return $this->hasMany(MumineenEstablishmentModel::class, 'establishment_id');
+        return $this->hasMany(MumineenEstablishmentModel::class, 'establishment_id', 'establishment_id');
     }
 
     public function receipts(): HasMany
     {
-        return $this->hasMany(ReceiptModel::class, 'establishment_id');
+        return $this->hasMany(ReceiptModel::class, 'establishment_id', 'establishment_id');
     }
 }
