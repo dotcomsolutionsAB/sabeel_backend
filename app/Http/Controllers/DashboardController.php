@@ -100,6 +100,11 @@ class DashboardController extends Controller
                 ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
                 ->count();
 
+            $partnerNotTagged = EstablishmentModel::whereNotIn('establishment_id', function ($q) {
+                    $q->select('establishment_id')
+                    ->from('t_mumineen_establishment');
+                })->count();
+
             $manufacturer = EstablishmentModel::where('type', 'manufacturer')->count();
 
             return $this->success('Dashboard data fetched', [
