@@ -96,7 +96,12 @@ class MumineenController extends Controller
 
             // SINGLE -> still return array (consistent with your sample)
             if ($id !== null) {
-                $m = MumineenModel::where('hof_type', 'HOF')->find($id);
+                $m = MumineenModel::where('hof_type','HOF')
+                    ->where(function ($q) use ($id) {
+                        $q->where('id', $id)
+                        ->orWhere('family_id', $id);
+                    })
+                    ->first();
 
                 if (!$m) {
                     return $this->error('Mumineen not found.', 404);
@@ -248,7 +253,7 @@ class MumineenController extends Controller
             }
 
             // 2) Resolve years
-            [$currentYear, $prevYear] = $this->resolveYearsSimple();
+            [$currentYear, $prevYear] = array_slice($this->resolveYears(), 0, 2);
 
             // 3) FAMILY sabeel + due
             [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
@@ -502,7 +507,7 @@ class MumineenController extends Controller
 
             $familyLinks = $links->get($m->family_id) ?? collect();
 
-            foreach ($familyLinks as $lnk) {
+            foreach ($familyLinks->unique('establishment_id') as $lnk) {
                 $estId = (int) $lnk->establishment_id;
                 $estName = optional($lnk->establishment)->name ?? '';
 

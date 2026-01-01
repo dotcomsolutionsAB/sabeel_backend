@@ -252,13 +252,13 @@ class EstablishmentController extends Controller
             $topUrl = count($partners) ? $partners[0]['url'] : '';
 
             // 4) Preload sabeel by year
-            $sabeelByYear = EstablishmentSabeelModel::where('establishment_id', $est->id)
+            $sabeelByYear = EstablishmentSabeelModel::where('establishment_id', $est->establishment_id)
                 ->get()
                 ->keyBy('year');
 
             // 5) Paid receipts by year
             $paidByYear = ReceiptModel::select('year', DB::raw('SUM(amount) as paid'))
-                ->where('establishment_id', $est->id)
+                ->where('establishment_id', $est->establishment_id)
                 ->where('status', 'active')
                 ->groupBy('year')
                 ->pluck('paid', 'year');
