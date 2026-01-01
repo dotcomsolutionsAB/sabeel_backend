@@ -224,7 +224,7 @@ class EstablishmentController extends Controller
             [$currentYear, $prevYear, $yearsList] = $this->resolveYearsForOverview($focusYear);
 
             // 3) Partners list (HOF) from links
-            $links = MumineenEstablishmentModel::where('establishment_id', $est->id)->get();
+            $links = MumineenEstablishmentModel::where('establishment_id', $est->establishment_id)->get();
             $familyIds = $links->pluck('family_id')->filter()->unique()->values()->all();
 
             $hofs = empty($familyIds)
