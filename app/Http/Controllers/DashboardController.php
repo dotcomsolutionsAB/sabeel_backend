@@ -34,12 +34,18 @@ class DashboardController extends Controller
 
             $dueMumineenSabeel = max(0, $totalMumineenSabeel - $paidMumineen);
 
-            $dueHouses = MumineenSabeelModel::leftJoin('t_receipts as r', function ($q) {
-                    $q->on('t_mumineen_sabeel.family_id', '=', 'r.family_id')
-                      ->where('r.status', 'active');
+            $dueHouses = DB::table('t_mumineen_sabeel as s')
+                ->leftJoin('t_receipts as r', function ($q) {
+                    $q->on('s.family_id', '=', 'r.family_id')
+                    ->where('r.status', 'active');
                 })
-                ->groupBy('t_mumineen_sabeel.family_id', 't_mumineen_sabeel.sabeel')
-                ->havingRaw('COALESCE(SUM(r.amount),0) < t_mumineen_sabeel.sabeel')
+                ->select(
+                    's.family_id',
+                    DB::raw('SUM(r.amount) as paid'),
+                    DB::raw('MAX(s.sabeel) as sabeel')
+                )
+                ->groupBy('s.family_id')
+                ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
                 ->count();
 
             $havingPrevDue = MumineenSabeelModel::leftJoin('t_receipts as r', function ($q) {
