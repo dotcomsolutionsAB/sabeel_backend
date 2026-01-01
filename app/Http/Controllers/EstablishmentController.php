@@ -211,7 +211,7 @@ class EstablishmentController extends Controller
 
             if ($id !== null) {
                 $entry = EstablishmentSabeelModel::where('id', $id)
-                    ->where('establishment_id', $est->id) // note: stores PK id
+                    ->where('establishment_id', $est->establishment_id) // note: stores establishment_id
                     ->first();
 
                 if (!$entry) {
