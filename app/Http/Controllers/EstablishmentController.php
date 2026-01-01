@@ -211,9 +211,10 @@ class EstablishmentController extends Controller
 
             if ($id !== null) {
                 $entry = EstablishmentSabeelModel::where('id', $id)
-                    ->where('establishment_id', $est->establishment_id) // note: stores establishment_id
+                    // ->where('establishment_id', $est->establishment_id) // note: stores establishment_id
                     ->first();
 
+                    dd($entry);
                 if (!$entry) {
                     return $this->error('Sabeel entry not found for this establishment.', 404);
                 }
