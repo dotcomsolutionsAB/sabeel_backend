@@ -198,7 +198,6 @@ class EstablishmentController extends Controller
     public function fetch_establishment_details($establishment_id, $id = null)
     {
         try {
-
             // 1) establishment_id param is establishment_id (10 digit)
             $est = EstablishmentModel::where('establishment_id', $establishment_id)->first();
             if (!$est) {
@@ -211,7 +210,7 @@ class EstablishmentController extends Controller
 
             if ($id !== null) {
                 $entry = EstablishmentSabeelModel::where('id', $id)
-                    // ->where('establishment_id', $est->establishment_id) // note: stores establishment_id
+                    ->where('establishment_id', $est->establishment_id) // note: stores establishment_id
                     ->first();
 
                 if (!$entry) {
