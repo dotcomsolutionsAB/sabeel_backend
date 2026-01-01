@@ -102,7 +102,7 @@ class EstablishmentController extends Controller
                       ->orWhereExists(function($sub) use ($search) {
                           $sub->from('t_mumineen_establishment as me')
                               ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                              ->whereColumn('me.establishment_id', 't_establishment.id')
+                              ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
                               ->where(function($x) use ($search) {
                                   $x->where('m.its', 'like', "%{$search}%")
                                     ->orWhere('m.name', 'like', "%{$search}%")
@@ -384,7 +384,7 @@ class EstablishmentController extends Controller
 
         // not_tagged => no partners linked
         if ($filter === 'not_tagged') {
-            return $q->whereNotIn('id', function($sub){
+            return $q->whereNotIn('establishment_id', function($sub){
                 $sub->from('t_mumineen_establishment')->select('establishment_id');
             });
         }
@@ -421,7 +421,13 @@ class EstablishmentController extends Controller
 
     private function buildPayload($rows, int $currentYear, int $prevYear): array
     {
-        $estIds = collect($rows)->pluck('id')->filter()->unique()->values()->all();
+        $estIds = collect($rows)
+            ->pluck('establishment_id')   // ✅ 10-digit business key
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         if (empty($estIds)) return [];
 
         // Establishment sabeel entries
@@ -464,7 +470,7 @@ class EstablishmentController extends Controller
 
             // Build partners list
             $partners = [];
-            $estLinks = $links->get($e->id) ?? collect();
+            $estLinks = $links->get($e->establishment_id) ?? collect();
 
             foreach ($estLinks as $lnk) {
                 $hof = $hofByFamily->get($lnk->family_id);
