@@ -54,7 +54,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     });
 
         // get unique sectors
-        Route::post('/sector', [MumineenController::class, 'index']);
+        Route::get('/sector', [MumineenController::class, 'index']);
 
         Route::get('/family_details/{family_id}/retrieve/{id?}', [MumineenController::class, 'fetch_family_details']);
 
