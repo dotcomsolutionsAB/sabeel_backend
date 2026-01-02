@@ -467,7 +467,7 @@ class MumineenController extends Controller
             ->groupBy('family_id');
 
         // Establishment links + names
-        $links = MumineenEstablishmentModel::with(['establishment:id,name'])
+        $links = MumineenEstablishmentModel::with('establishment')
             ->whereIn('family_id', $familyIds)
             ->get()
             ->groupBy('family_id');
