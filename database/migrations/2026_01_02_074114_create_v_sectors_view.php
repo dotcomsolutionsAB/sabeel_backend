@@ -18,12 +18,14 @@ return new class extends Migration
 
         DB::statement("
             CREATE OR REPLACE VIEW v_sectors AS
-            SELECT DISTINCT
-                sector AS id,
-                sector AS name
-            FROM t_mumineen
-            WHERE sector IS NOT NULL AND sector <> ''
-            ORDER BY sector
+            SELECT
+              ROW_NUMBER() OVER (ORDER BY sector) AS id,
+              sector AS name
+            FROM (
+              SELECT DISTINCT sector
+              FROM t_mumineen
+              WHERE sector IS NOT NULL AND sector <> ''
+            ) s
         ");
     }
 
