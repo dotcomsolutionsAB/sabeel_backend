@@ -358,6 +358,21 @@ class MumineenController extends Controller
         return [$sabeelSum, $dueSum];
     }
 
+    // sector index
+    public function index(Request $request)
+    {
+        try {
+            $sectors = DB::table('v_sectors')
+                ->select('id', 'name')
+                ->orderBy('name')
+                ->get();
+
+            return $this->success('Sectors fetched successfully', $sectors, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Sectors fetch failed');
+        }
+    }
 
     /* ----------------- Helpers ----------------- */
 
@@ -452,7 +467,7 @@ class MumineenController extends Controller
             ->groupBy('family_id');
 
         // Establishment links + names
-        $links = MumineenEstablishmentModel::with('establishment:id,name')
+        $links = MumineenEstablishmentModel::with(['establishment:id,name'])
             ->whereIn('family_id', $familyIds)
             ->get()
             ->groupBy('family_id');
@@ -508,8 +523,8 @@ class MumineenController extends Controller
             $familyLinks = $links->get($m->family_id) ?? collect();
 
             foreach ($familyLinks->unique('establishment_id') as $lnk) {
-                $estId = (int) $lnk->establishment_id;
-                $estName = optional($lnk->establishment)->name ?? '';
+                $estId = (string) $lnk->establishment_id;
+                $estName = (string) (optional($lnk->establishment)->name ?? '');
 
                 $estSabeelCur = (int) optional($es->get($estId))
                     ?->firstWhere('year', $currentYear)
@@ -532,8 +547,8 @@ class MumineenController extends Controller
                 $estDuePrev = max(0, $estSabeelPrev - $estPaidPrev);
 
                 $estDetails[] = [
-                    'establishment_id' => (string)$estId,
-                    'name'             => (string)$estName,
+                    'establishment_id' => $estId,
+                    'name'             => $estName,
                     'due'              => (string)$estDueCur,
                 ];
 
@@ -578,5 +593,4 @@ class MumineenController extends Controller
         $next = substr((string)($year + 1), -2);
         return "{$year}-{$next}";
     }
-
 }
