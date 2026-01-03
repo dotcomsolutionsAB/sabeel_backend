@@ -329,67 +329,6 @@ class ReceiptController extends Controller
     }
 
     // export
-    // public function export(Request $request)
-    // {
-    //     try {
-    //         $q = ReceiptModel::where('status','active')
-    //             ->orderBy('receipt_no','desc');
-
-    //         if ($request->type === 'family') {
-    //             $q->whereNotNull('family_id');
-    //         } else {
-    //             $q->whereNotNull('establishment_id');
-    //         }
-
-    //         if ($request->filled('family_id')) {
-    //             $q->where('family_id',$request->family_id);
-    //         }
-
-    //         if ($request->filled('establishment_id')) {
-    //             $q->where('establishment_id',$request->establishment_id);
-    //         }
-
-    //         $rows = $q->get();
-
-    //         $excelRows = [];
-    //         $sn = 1;
-
-    //         foreach ($rows as $r) {
-    //             $excelRows[] = [
-    //                 $sn++,
-    //                 $r->receipt_no,
-    //                 $r->date?->format('d-m-Y'),
-    //                 $r->name,
-    //                 $r->amount,
-    //                 $r->mode,
-    //                 $r->status,
-    //             ];
-    //         }
-
-    //         $export = new GenericExcelExport(
-    //             $excelRows,
-    //             ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
-    //             [
-    //                 'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
-    //             ],
-    //             [
-    //                 'A' => Alignment::HORIZONTAL_CENTER,
-    //                 'B' => Alignment::HORIZONTAL_LEFT,
-    //                 'C' => Alignment::HORIZONTAL_CENTER,
-    //                 'D' => Alignment::HORIZONTAL_LEFT,
-    //                 'E' => Alignment::HORIZONTAL_LEFT,
-    //                 'F' => Alignment::HORIZONTAL_LEFT,
-    //                 'G' => Alignment::HORIZONTAL_RIGHT,
-    //             ]
-    //         );
-
-    //         return ExcelExportHelper::store($export, 'receipt', 'receipt_export');
-
-    //     } catch (\Throwable $e) {
-    //         return $this->serverError($e, 'Receipt export failed');
-    //     }
-    // }
-
     public function export(Request $request)
     {
         try {
