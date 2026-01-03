@@ -8,7 +8,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 
 trait CommonExcelStyle
 {
-    public function styles(Worksheet $sheet)
+    public function applyCommonStyles(Worksheet $sheet)
     {
         $highestRow    = $sheet->getHighestRow();
         $highestColumn = $sheet->getHighestColumn();
@@ -27,7 +27,8 @@ trait CommonExcelStyle
 
         // Borders for all cells
         $sheet->getStyle("A1:{$highestColumn}{$highestRow}")
-            ->getBorders()->getAllBorders()
+            ->getBorders()
+            ->getAllBorders()
             ->setBorderStyle(Border::BORDER_THIN);
     }
 

@@ -50,7 +50,7 @@ class GenericExcelExport implements
     public function styles(Worksheet $sheet)
     {
         // Apply common styles
-        $this->styles($sheet);
+        $this->applyCommonStyles($sheet);
 
         // Apply column alignments
         foreach ($this->alignments as $col => $align) {
