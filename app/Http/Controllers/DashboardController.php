@@ -203,23 +203,52 @@ class DashboardController extends Controller
                 $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
             }
 
-            $rows = $q
-                ->skip($offset)
-                ->take($limit)
-                ->get();
+            $rows = $q->skip($offset)->take($limit)->get();
+
+            /** ---------------- PRELOAD DATA ---------------- */
+
+            $estIds = $rows->pluck('establishment_id')->all();
+
+            // Sabeel (current year)
+            $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+                ->where('year', $currentYear)
+                ->pluck('sabeel', 'establishment_id');
+
+            // Partner links
+            $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)->get();
+
+            $familyIds = $links->pluck('family_id')->unique()->all();
+
+            $hofs = MumineenModel::whereIn('family_id', $familyIds)
+                ->where('hof_type', 'HOF')
+                ->get()
+                ->keyBy('family_id');
+
+            $partnersByEst = [];
+
+            foreach ($links as $l) {
+                $hof = $hofs->get($l->family_id);
+                if (!$hof) continue;
+
+                $partnersByEst[$l->establishment_id][] = $hof->name;
+            }
+
+            /** ---------------- BUILD EXCEL ROWS ---------------- */
 
             $excelRows = [];
-            $sn = $offset + 1; // 👈 SN must respect pagination
+            $sn = $offset + 1;
 
             foreach ($rows as $e) {
                 $excelRows[] = [
                     $sn++,
                     $e->name,
-                    '',
-                    '',
-                    $e->address,
-                    '',
-                    0,
+                    $e->mobile ?? '',
+                    $e->email ?? '',
+                    $e->address ?? '',
+                    isset($partnersByEst[$e->establishment_id])
+                        ? implode(', ', $partnersByEst[$e->establishment_id])
+                        : '',
+                    (float) ($sabeelMap[$e->establishment_id] ?? 0),
                 ];
             }
 
@@ -227,7 +256,7 @@ class DashboardController extends Controller
                 $excelRows,
                 ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
                 [
-                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ ',
                 ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
@@ -250,7 +279,6 @@ class DashboardController extends Controller
             return $this->serverError($e, 'Establishment export failed');
         }
     }
-
 
     // helper
     private function resolveYears(): array
