@@ -367,14 +367,18 @@ class ReceiptController extends Controller
 
             $export = new GenericExcelExport(
                 $excelRows,
-                ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
-                ['E' => NumberFormat::FORMAT_ACCOUNTING],
+                ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+                [
+                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+                ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
-                    'B' => Alignment::HORIZONTAL_CENTER,
+                    'B' => Alignment::HORIZONTAL_LEFT,
                     'C' => Alignment::HORIZONTAL_CENTER,
                     'D' => Alignment::HORIZONTAL_LEFT,
-                    'E' => Alignment::HORIZONTAL_RIGHT,
+                    'E' => Alignment::HORIZONTAL_LEFT,
+                    'F' => Alignment::HORIZONTAL_LEFT,
+                    'G' => Alignment::HORIZONTAL_RIGHT,
                 ]
             );
 

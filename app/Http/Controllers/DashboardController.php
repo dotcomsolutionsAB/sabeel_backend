@@ -192,16 +192,23 @@ class DashboardController extends Controller
         try {
             [$currentYear, $prevYear] = $this->resolveYears();
 
-            $q = EstablishmentModel::query()->orderBy('name','asc');
+            $limit  = max(1, (int) $request->input('limit', 50));
+            $offset = max(0, (int) $request->input('offset', 0));
+
+            $q = EstablishmentModel::query()
+                ->orderBy('name', 'asc');
 
             if ($request->filled('filter')) {
                 $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
             }
 
-            $rows = $q->get();
+            $rows = $q
+                ->skip($offset)
+                ->take($limit)
+                ->get();
 
             $excelRows = [];
-            $sn = 1;
+            $sn = $offset + 1; // 👈 SN must respect pagination
 
             foreach ($rows as $e) {
                 $excelRows[] = [
@@ -218,22 +225,31 @@ class DashboardController extends Controller
             $export = new GenericExcelExport(
                 $excelRows,
                 ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
-                ['G' => NumberFormat::FORMAT_ACCOUNTING],
+                [
+                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+                ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
                     'B' => Alignment::HORIZONTAL_LEFT,
+                    'C' => Alignment::HORIZONTAL_CENTER,
+                    'D' => Alignment::HORIZONTAL_LEFT,
                     'E' => Alignment::HORIZONTAL_LEFT,
                     'F' => Alignment::HORIZONTAL_LEFT,
                     'G' => Alignment::HORIZONTAL_RIGHT,
                 ]
             );
 
-            return ExcelExportHelper::store($export, 'dashboard', 'dashboard_establishment');
+            return ExcelExportHelper::store(
+                $export,
+                'dashboard',
+                'dashboard_establishment'
+            );
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment export failed');
         }
     }
+
 
     // helper
     private function resolveYears(): array

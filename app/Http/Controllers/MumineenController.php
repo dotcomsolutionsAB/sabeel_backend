@@ -357,15 +357,17 @@ class MumineenController extends Controller
 
             $export = new GenericExcelExport(
                 $excelRows,
-                ['SN','ITS','Name','Mobile','Email','Sector','Sabeel'],
-                ['G' => NumberFormat::FORMAT_ACCOUNTING],
+                ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+                [
+                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+                ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
-                    'B' => Alignment::HORIZONTAL_CENTER,
-                    'D' => Alignment::HORIZONTAL_CENTER,
-                    'F' => Alignment::HORIZONTAL_CENTER,
-                    'C' => Alignment::HORIZONTAL_LEFT,
+                    'B' => Alignment::HORIZONTAL_LEFT,
+                    'C' => Alignment::HORIZONTAL_CENTER,
+                    'D' => Alignment::HORIZONTAL_LEFT,
                     'E' => Alignment::HORIZONTAL_LEFT,
+                    'F' => Alignment::HORIZONTAL_LEFT,
                     'G' => Alignment::HORIZONTAL_RIGHT,
                 ]
             );
