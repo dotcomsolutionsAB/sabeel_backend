@@ -24,6 +24,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('dashboard')->group(function () {
         Route::get('/retrieve', [DashboardController::class, 'retrieve']);
         Route::post('/retrieve_sabeel_due', [DashboardController::class, 'retrieveSabeelDue']);
+        Route::post('/export', [MumineenController::class, 'exportEstablishment']);
     });
 
     // users route
@@ -33,7 +34,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{id}', [UserController::class, 'edit']);
         Route::delete('/delete/{id}', [UserController::class, 'delete']);
         Route::post('/reset_password', [AuthController::class, 'updatePassword']);
-        Route::post('/export', [UserController::class, 'exportExcel']);
+        // Route::post('/export', [UserController::class, 'exportExcel']);
         Route::post('/change_password', [UserController::class, 'updatePassword']);
     });
 
@@ -43,6 +44,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [MumineenController::class, 'fetch']);
         Route::post('/update/{id}', [MumineenController::class, 'edit']);
         Route::delete('/delete/{id}', [MumineenController::class, 'delete']);
+        Route::post('/export', [MumineenController::class, 'export']);
     });
 
     // mumineen-sabeel route
@@ -98,6 +100,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [ReceiptController::class, 'fetch']);
         Route::post('/update/{id}', [ReceiptController::class, 'edit']);
         Route::delete('/delete/{id}', [ReceiptController::class, 'delete']);
+        Route::post('/export', [ReceiptController::class, 'export']);
     });
 
     

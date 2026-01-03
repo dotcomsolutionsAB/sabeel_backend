@@ -6,6 +6,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\GenericExcelExport;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
@@ -303,6 +307,76 @@ class MumineenController extends Controller
             return $this->serverError($e, 'Family overview fetch failed');
         }
     }
+
+    // export
+    public function export(Request $request)
+    {
+        try {
+            [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
+
+            // SAME FILTER LOGIC AS fetch()
+            $q = MumineenModel::query()
+                ->where('hof_type', 'HOF')
+                ->select('family_id','its','name','sector','mobile','email')
+                ->orderBy('name','asc');
+
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $q->where(function ($w) use ($search) {
+                    $w->where('name','like',"%{$search}%")
+                    ->orWhere('its','like',"%{$search}%")
+                    ->orWhere('sector','like',"%{$search}%");
+                });
+            }
+
+            if ($request->filled('sector')) {
+                $q->where('sector',$request->sector);
+            }
+
+            if ($request->filled('filter')) {
+                $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
+            }
+
+            $rows = $this->buildPayload($q->get(), $currentYear, $prevYear, $yearsList);
+
+            // Prepare Excel rows
+            $excelRows = [];
+            $sn = 1;
+
+            foreach ($rows as $r) {
+                $excelRows[] = [
+                    $sn++,
+                    $r['its'],
+                    $r['name'],
+                    $r['mobile'],
+                    $r['email'],
+                    $r['sector'],
+                    $r['sabeel']['sabeel'],
+                ];
+            }
+
+            $export = new GenericExcelExport(
+                $excelRows,
+                ['SN','ITS','Name','Mobile','Email','Sector','Sabeel'],
+                ['G' => NumberFormat::FORMAT_ACCOUNTING],
+                [
+                    'A' => Alignment::HORIZONTAL_CENTER,
+                    'B' => Alignment::HORIZONTAL_CENTER,
+                    'D' => Alignment::HORIZONTAL_CENTER,
+                    'F' => Alignment::HORIZONTAL_CENTER,
+                    'C' => Alignment::HORIZONTAL_LEFT,
+                    'E' => Alignment::HORIZONTAL_LEFT,
+                    'G' => Alignment::HORIZONTAL_RIGHT,
+                ]
+            );
+
+            return ExcelExportHelper::store($export, 'family', 'family_export');
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Family export failed');
+        }
+    }
+
 
     /* ---------------- helpers for overview ---------------- */
 

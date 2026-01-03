@@ -5,6 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\GenericExcelExport;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use Illuminate\Support\Facades\Schema;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentModel;
@@ -180,5 +185,88 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sabeel due fetch failed');
         }
+    }
+
+    public function exportEstablishment(Request $request)
+    {
+        try {
+            [$currentYear, $prevYear] = $this->resolveYears();
+
+            $q = EstablishmentModel::query()->orderBy('name','asc');
+
+            if ($request->filled('filter')) {
+                $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
+            }
+
+            $rows = $q->get();
+
+            $excelRows = [];
+            $sn = 1;
+
+            foreach ($rows as $e) {
+                $excelRows[] = [
+                    $sn++,
+                    $e->name,
+                    '',
+                    '',
+                    $e->address,
+                    '',
+                    0,
+                ];
+            }
+
+            $export = new GenericExcelExport(
+                $excelRows,
+                ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+                ['G' => NumberFormat::FORMAT_ACCOUNTING],
+                [
+                    'A' => Alignment::HORIZONTAL_CENTER,
+                    'B' => Alignment::HORIZONTAL_LEFT,
+                    'E' => Alignment::HORIZONTAL_LEFT,
+                    'F' => Alignment::HORIZONTAL_LEFT,
+                    'G' => Alignment::HORIZONTAL_RIGHT,
+                ]
+            );
+
+            return ExcelExportHelper::store($export, 'dashboard', 'dashboard_establishment');
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Establishment export failed');
+        }
+    }
+
+    // helper
+    private function resolveYears(): array
+    {
+        // Safe fallback if t_year table does not exist
+        if (!Schema::hasTable('t_year')) {
+            $current = (int) date('Y');
+            return [$current, $current - 1];
+        }
+
+        // Try current year flag
+        $current = (int) DB::table('t_year')
+            ->where('is_current', 1)
+            ->value('year');
+
+        // Fallbacks
+        if (!$current) {
+            $current = (int) DB::table('t_year')->max('year');
+        }
+
+        if (!$current) {
+            $current = (int) date('Y');
+        }
+
+        // Previous year
+        $previous = (int) DB::table('t_year')
+            ->where('year', '<', $current)
+            ->max('year');
+
+        if (!$previous) {
+            $previous = $current - 1;
+        }
+
+        return [$current, $previous];
     }
 }

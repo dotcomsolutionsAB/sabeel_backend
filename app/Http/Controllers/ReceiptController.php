@@ -8,7 +8,10 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
-
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\GenericExcelExport;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use App\Models\ReceiptModel;
 use App\Models\MumineenModel;
 use App\Models\EstablishmentModel;
@@ -321,6 +324,64 @@ class ReceiptController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Receipt delete failed');
+        }
+    }
+
+    // export
+    public function export(Request $request)
+    {
+        try {
+            $q = ReceiptModel::where('status','active')
+                ->orderBy('receipt_no','desc');
+
+            if ($request->type === 'family') {
+                $q->whereNotNull('family_id');
+            } else {
+                $q->whereNotNull('establishment_id');
+            }
+
+            if ($request->filled('family_id')) {
+                $q->where('family_id',$request->family_id);
+            }
+
+            if ($request->filled('establishment_id')) {
+                $q->where('establishment_id',$request->establishment_id);
+            }
+
+            $rows = $q->get();
+
+            $excelRows = [];
+            $sn = 1;
+
+            foreach ($rows as $r) {
+                $excelRows[] = [
+                    $sn++,
+                    $r->receipt_no,
+                    $r->date?->format('d-m-Y'),
+                    $r->name,
+                    $r->amount,
+                    $r->mode,
+                    $r->status,
+                ];
+            }
+
+            $export = new GenericExcelExport(
+                $excelRows,
+                ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
+                ['E' => NumberFormat::FORMAT_ACCOUNTING],
+                [
+                    'A' => Alignment::HORIZONTAL_CENTER,
+                    'B' => Alignment::HORIZONTAL_CENTER,
+                    'C' => Alignment::HORIZONTAL_CENTER,
+                    'D' => Alignment::HORIZONTAL_LEFT,
+                    'E' => Alignment::HORIZONTAL_RIGHT,
+                ]
+            );
+
+            return ExcelExportHelper::store($export, 'receipt', 'receipt_export');
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt export failed');
         }
     }
 
