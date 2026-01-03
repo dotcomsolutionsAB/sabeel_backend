@@ -9,13 +9,13 @@ use Maatwebsite\Excel\Concerns\{
     WithStyles,
     WithColumnFormatting
 };
-use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class GenericExcelExport implements
     FromArray,
     WithHeadings,
-    WithStyles
+    WithStyles,
+    WithColumnFormatting
 {
     use CommonExcelStyle;
 
@@ -31,7 +31,7 @@ class GenericExcelExport implements
         array $alignments = []
     ) {
         $this->rows          = $rows;
-        $this->headings      = $headings;
+        $this->headings      = array_values($headings); // 🔑 force reindex
         $this->columnFormats = $columnFormats;
         $this->alignments    = $alignments;
     }
@@ -48,10 +48,10 @@ class GenericExcelExport implements
 
     public function styles(Worksheet $sheet)
     {
-        // Apply common styles
-        $this->applyCommonStyles($sheet);
+        // ✅ Call trait method DIRECTLY
+        $this->styles($sheet);
 
-        // Apply column alignments
+        // Column alignment
         foreach ($this->alignments as $col => $align) {
             $this->alignColumn(
                 $sheet,
