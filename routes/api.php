@@ -24,7 +24,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('dashboard')->group(function () {
         Route::get('/retrieve', [DashboardController::class, 'retrieve']);
         Route::post('/retrieve_sabeel_due', [DashboardController::class, 'retrieveSabeelDue']);
-        Route::post('/export', [MumineenController::class, 'exportEstablishment']);
+        Route::post('/export', [DashboardController::class, 'exportEstablishment']);
     });
 
     // users route
