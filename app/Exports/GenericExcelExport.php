@@ -15,8 +15,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 class GenericExcelExport implements
     FromArray,
     WithHeadings,
-    WithStyles,
-    WithColumnFormatting
+    WithStyles
 {
     use CommonExcelStyle;
 
