@@ -209,14 +209,13 @@ class DashboardController extends Controller
 
             $estIds = $rows->pluck('establishment_id')->all();
 
-            // Sabeel (current year)
+            // Current year sabeel
             $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
                 ->where('year', $currentYear)
                 ->pluck('sabeel', 'establishment_id');
 
             // Partner links
             $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)->get();
-
             $familyIds = $links->pluck('family_id')->unique()->all();
 
             $hofs = MumineenModel::whereIn('family_id', $familyIds)
@@ -228,9 +227,9 @@ class DashboardController extends Controller
 
             foreach ($links as $l) {
                 $hof = $hofs->get($l->family_id);
-                if (!$hof) continue;
-
-                $partnersByEst[$l->establishment_id][] = $hof->name;
+                if ($hof) {
+                    $partnersByEst[$l->establishment_id][] = $hof->name;
+                }
             }
 
             /** ---------------- BUILD EXCEL ROWS ---------------- */
@@ -240,17 +239,21 @@ class DashboardController extends Controller
 
             foreach ($rows as $e) {
                 $excelRows[] = [
-                    $sn++,
-                    $e->name,
-                    $e->mobile ?? '',
-                    $e->email ?? '',
-                    $e->address ?? '',
-                    isset($partnersByEst[$e->establishment_id])
-                        ? implode(', ', $partnersByEst[$e->establishment_id])
-                        : '',
-                    (float) ($sabeelMap[$e->establishment_id] ?? 0),
+                    (int) $sn++,                               // SN
+                    (string) $e->name,                        // Name
+                    (string) ($e->mobile ?? '-'),             // Mobile
+                    (string) ($e->email ?? '-'),              // Email
+                    (string) ($e->address ?? '-'),            // Address
+                    (string) (
+                        isset($partnersByEst[$e->establishment_id])
+                            ? implode(', ', $partnersByEst[$e->establishment_id])
+                            : '-'
+                    ),                                        // Partners
+                    (float) ($sabeelMap[$e->establishment_id] ?? 0), // Sabeel
                 ];
             }
+
+            /** ---------------- EXPORT ---------------- */
 
             $export = new GenericExcelExport(
                 $excelRows,
