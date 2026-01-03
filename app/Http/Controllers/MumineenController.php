@@ -309,24 +309,89 @@ class MumineenController extends Controller
     }
 
     // export
+    // public function export(Request $request)
+    // {
+    //     try {
+    //         [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
+
+    //         // SAME FILTER LOGIC AS fetch()
+    //         $q = MumineenModel::query()
+    //             ->where('hof_type', 'HOF')
+    //             ->select('family_id','its','name','sector','mobile','email')
+    //             ->orderBy('name','asc');
+
+    //         if ($request->filled('search')) {
+    //             $search = $request->search;
+    //             $q->where(function ($w) use ($search) {
+    //                 $w->where('name','like',"%{$search}%")
+    //                 ->orWhere('its','like',"%{$search}%")
+    //                 ->orWhere('sector','like',"%{$search}%");
+    //             });
+    //         }
+
+    //         if ($request->filled('sector')) {
+    //             $q->where('sector',$request->sector);
+    //         }
+
+    //         if ($request->filled('filter')) {
+    //             $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
+    //         }
+
+    //         $rows = $this->buildPayload($q->get(), $currentYear, $prevYear, $yearsList);
+
+    //         // Prepare Excel rows
+    //         $excelRows = [];
+    //         $sn = 1;
+
+    //         foreach ($rows as $r) {
+    //             $excelRows[] = [
+    //                 $sn++,
+    //                 $r['its'],
+    //                 $r['name'],
+    //                 $r['mobile'],
+    //                 $r['email'],
+    //                 $r['sector'],
+    //                 $r['sabeel']['sabeel'],
+    //             ];
+    //         }
+
+    //         $export = new GenericExcelExport(
+    //             $excelRows,
+    //             ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+    //             [
+    //                 'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+    //             ],
+    //             [
+    //                 'A' => Alignment::HORIZONTAL_CENTER,
+    //                 'B' => Alignment::HORIZONTAL_LEFT,
+    //                 'C' => Alignment::HORIZONTAL_CENTER,
+    //                 'D' => Alignment::HORIZONTAL_LEFT,
+    //                 'E' => Alignment::HORIZONTAL_LEFT,
+    //                 'F' => Alignment::HORIZONTAL_LEFT,
+    //                 'G' => Alignment::HORIZONTAL_RIGHT,
+    //             ]
+    //         );
+
+    //         return ExcelExportHelper::store($export, 'family', 'family_export');
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Family export failed');
+    //     }
+    // }
+
     public function export(Request $request)
     {
         try {
             [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
-            // SAME FILTER LOGIC AS fetch()
-            $q = MumineenModel::query()
-                ->where('hof_type', 'HOF')
-                ->select('family_id','its','name','sector','mobile','email')
+            $limit  = max(1, (int) $request->input('limit', 50));
+            $offset = max(0, (int) $request->input('offset', 0));
+
+            $q = MumineenModel::where('hof_type','HOF')
                 ->orderBy('name','asc');
 
             if ($request->filled('search')) {
-                $search = $request->search;
-                $q->where(function ($w) use ($search) {
-                    $w->where('name','like',"%{$search}%")
-                    ->orWhere('its','like',"%{$search}%")
-                    ->orWhere('sector','like',"%{$search}%");
-                });
+                $q->where('name','like',"%{$request->search}%");
             }
 
             if ($request->filled('sector')) {
@@ -334,14 +399,18 @@ class MumineenController extends Controller
             }
 
             if ($request->filled('filter')) {
-                $q = $this->applyFilter($q, $request->filter, $currentYear, $prevYear);
+                $q = $this->applyFilter($q,$request->filter,$currentYear,$prevYear);
             }
 
-            $rows = $this->buildPayload($q->get(), $currentYear, $prevYear, $yearsList);
+            $rows = $this->buildPayload(
+                $q->skip($offset)->take($limit)->get(),
+                $currentYear,
+                $prevYear,
+                $yearsList
+            );
 
-            // Prepare Excel rows
             $excelRows = [];
-            $sn = 1;
+            $sn = $offset + 1;
 
             foreach ($rows as $r) {
                 $excelRows[] = [
@@ -351,34 +420,33 @@ class MumineenController extends Controller
                     $r['mobile'],
                     $r['email'],
                     $r['sector'],
-                    $r['sabeel']['sabeel'],
+                    (float) $r['sabeel']['sabeel'],
                 ];
             }
 
             $export = new GenericExcelExport(
                 $excelRows,
-                ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+                ['SN','ITS','Name','Mobile','Email','Sector','Sabeel'],
                 [
                     'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
                 ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
-                    'B' => Alignment::HORIZONTAL_LEFT,
-                    'C' => Alignment::HORIZONTAL_CENTER,
-                    'D' => Alignment::HORIZONTAL_LEFT,
+                    'B' => Alignment::HORIZONTAL_CENTER,
+                    'C' => Alignment::HORIZONTAL_LEFT,
+                    'D' => Alignment::HORIZONTAL_CENTER,
                     'E' => Alignment::HORIZONTAL_LEFT,
-                    'F' => Alignment::HORIZONTAL_LEFT,
+                    'F' => Alignment::HORIZONTAL_CENTER,
                     'G' => Alignment::HORIZONTAL_RIGHT,
                 ]
             );
 
-            return ExcelExportHelper::store($export, 'family', 'family_export');
+            return ExcelExportHelper::store($export,'family','family_export');
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Family export failed');
         }
     }
-
 
     /* ---------------- helpers for overview ---------------- */
 
