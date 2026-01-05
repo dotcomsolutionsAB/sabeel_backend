@@ -169,10 +169,12 @@ class MumineenController extends Controller
         }
     }
 
-    public function edit(Request $request, $id)
+    public function edit(Request $request, $family_id)
     {
         try {
-            $m = MumineenModel::where('hof_type', 'HOF')->find($id);
+            $m = MumineenModel::where('hof_type', 'HOF')
+                ->where('family_id', (int) $family_id)
+                ->first();
 
             if (!$m) {
                 return $this->error('Mumineen not found.', 404);

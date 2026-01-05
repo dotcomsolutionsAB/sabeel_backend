@@ -140,10 +140,10 @@ class EstablishmentController extends Controller
      * UPDATE
      * POST /establishment/update/{id}
      */
-    public function edit(Request $request, $id)
+    public function edit(Request $request, $establishment_id)
     {
         try {
-            $est = EstablishmentModel::find($id);
+            $est = EstablishmentModel::where('establishment_id', (string)$id)->first();
             if (!$est) return $this->error('Establishment not found.', 404);
 
             $validator = Validator::make($request->all(), [

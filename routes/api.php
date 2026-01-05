@@ -42,7 +42,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('family')->group(function () {
         Route::post('/create', [MumineenController::class, 'create']);
         Route::post('/retrieve/{id?}', [MumineenController::class, 'fetch']);
-        Route::post('/update/{id}', [MumineenController::class, 'edit']);
+        Route::post('/update/{family_id}', [MumineenController::class, 'edit']);
         Route::delete('/delete/{id}', [MumineenController::class, 'delete']);
         Route::post('/export', [MumineenController::class, 'export']);
     });
@@ -64,7 +64,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('establishment')->group(function () {
         Route::post('/create', [EstablishmentController::class, 'create']);
         Route::post('/retrieve/{id?}', [EstablishmentController::class, 'fetch']);
-        Route::post('/update/{id}', [EstablishmentController::class, 'edit']);
+        Route::post('/update/{establishment_id}', [EstablishmentController::class, 'edit']);
         Route::delete('/delete/{id}', [EstablishmentController::class, 'delete']);
     });
 
