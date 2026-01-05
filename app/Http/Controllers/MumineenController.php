@@ -443,10 +443,7 @@ class MumineenController extends Controller
                 ->orderBy('name')
                 ->get();
 
-            // Wrap the sectors array in an object
-            $responseData = ['data' => $sectors];
-
-            return $this->success('Sectors fetched successfully', $responseData, 200);
+            return $this->success('Sectors fetched successfully', $sectors, 200);
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sectors fetch failed');
