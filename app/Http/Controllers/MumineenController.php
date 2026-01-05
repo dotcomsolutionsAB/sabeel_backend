@@ -524,13 +524,6 @@ class MumineenController extends Controller
         return $q;
     }
 
-    // Function to check if the image exists
-    private function imageExists($url)
-    {
-        $headers = @get_headers($url);
-        return $headers && strpos($headers[0], '200') !== false;
-    }
-
     private function buildPayload($rows, int $currentYear, int $prevYear, array $yearsList): array
     {
         $familyIds = collect($rows)->pluck('family_id')->filter()->unique()->values()->all();
@@ -640,16 +633,10 @@ class MumineenController extends Controller
                 $estPrevDueSum   += $estDuePrev;
             }
 
-            // Check if the image exists, otherwise use the fallback URL
-            $imageUrl = "https://talabulilm.com/mumin_images/{$m->its}.png";
-            if (!$this->imageExists($imageUrl)) {
-                $imageUrl = "https://api.kolkatajamaat.com/storage/uploads/placeholder.jpg";
-            }
-
             $out[] = [
                 'id'        => (string) $m->id,
                 'family_id' => (string) $m->family_id,
-                'url'       => $imageUrl,
+                'url'       => "https://talabulilm.com/mumin_images/{$m->its}.png",
 
                 'name'      => (string) $m->name,
                 'its'       => (string) $m->its,
