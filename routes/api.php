@@ -103,6 +103,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{id}', [ReceiptController::class, 'edit']);
         Route::delete('/delete/{id}', [ReceiptController::class, 'delete']);
         Route::post('/export', [ReceiptController::class, 'export']);
+        Route::post('/print/{id}', [ReceiptController::class, 'generateReceipt']);
     });
 
     // deposits route

@@ -393,6 +393,153 @@ class ReceiptController extends Controller
         }
     }
 
+    /**
+     * Generate and return receipt PDF
+     * 
+     * @param int $id Receipt ID
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function generateReceipt($id)
+    {
+        try {
+            // Find the receipt by ID
+            $receipt = ReceiptModel::find($id);
+
+            // Check if receipt exists
+            if (!$receipt) {
+                return $this->error('Receipt not found', 404);
+            }
+
+            // Prepare data for the blade template
+            $data = [
+                'receiptNumber' => $receipt->receipt_no,
+                'date' => date('d-m-Y', strtotime($receipt->date)),
+                'receivedFrom' => $receipt->name,
+                'itsNumber' => $receipt->its,
+                'amount' => 'Rs. ' . number_format($receipt->amount, 2),
+                'amountInWords' => $this->convertNumberToWords($receipt->amount),
+                'paymentMode' => ucfirst($receipt->mode),
+                'chequeNo' => $receipt->mode === 'cheque' ? $receipt->cheque_no : $receipt->transaction_no,
+                'year' => $receipt->year,
+                'bankName' => $receipt->bank ?? '',
+                'receivedBy' => strtoupper($receipt->establishment_id ?? 'ADMINISTRATION'),
+                'chequeDate' => $receipt->mode === 'cheque' 
+                    ? date('d-m-Y', strtotime($receipt->cheque_date)) 
+                    : date('d-m-Y', strtotime($receipt->transaction_date)),
+            ];
+
+            // Render blade view to HTML
+            $html = View::make('receipts.receipt', $data)->render();
+
+            // Initialize mPDF
+            $mpdf = new Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 0,
+                'margin_right' => 0,
+                'margin_top' => 0,
+                'margin_bottom' => 0,
+            ]);
+
+            // Write HTML to PDF
+            $mpdf->WriteHTML($html);
+
+            // Create filename
+            $filename = 'receipt_' . $receipt->receipt_no . '_' . time() . '.pdf';
+            
+            // Ensure directory exists
+            $directory = 'uploads/receipt/print';
+            if (!Storage::disk('public')->exists($directory)) {
+                Storage::disk('public')->makeDirectory($directory, 0755, true);
+            }
+
+            // Save PDF to storage
+            $path = $directory . '/' . $filename;
+            $pdfOutput = $mpdf->Output('', 'S'); // Get PDF as string
+            Storage::disk('public')->put($path, $pdfOutput);
+
+            // Generate public URL
+            $fullUrl = asset('storage/' . $path);
+
+            // Return success response with PDF URL
+            return $this->success('Receipt generated successfully', [
+                'receipt_id' => $receipt->id,
+                'receipt_number' => $receipt->receipt_no,
+                'pdf_url' => $fullUrl,
+                'pdf_path' => $path,
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt generation error');
+        }
+    }
+
+    /**
+     * Convert number to words (Indian format)
+     * 
+     * @param float $number
+     * @return string
+     */
+    private function convertNumberToWords($number)
+    {
+        $amount = number_format($number, 2, '.', '');
+        list($rupees, $paise) = explode('.', $amount);
+        
+        $words = $this->numberToWords((int)$rupees);
+        
+        if ((int)$paise > 0) {
+            $paiseWords = $this->numberToWords((int)$paise);
+            return "Rupees " . ucwords($words) . " and " . ucwords($paiseWords) . " Paise Only";
+        }
+        
+        return "Rupees " . ucwords($words) . " Only";
+    }
+
+    /**
+     * Helper function to convert number to words
+     * 
+     * @param int $number
+     * @return string
+     */
+    private function numberToWords($number)
+    {
+        $ones = array(
+            0 => '', 1 => 'One', 2 => 'Two', 3 => 'Three', 4 => 'Four',
+            5 => 'Five', 6 => 'Six', 7 => 'Seven', 8 => 'Eight', 9 => 'Nine',
+            10 => 'Ten', 11 => 'Eleven', 12 => 'Twelve', 13 => 'Thirteen',
+            14 => 'Fourteen', 15 => 'Fifteen', 16 => 'Sixteen', 17 => 'Seventeen',
+            18 => 'Eighteen', 19 => 'Nineteen'
+        );
+
+        $tens = array(
+            2 => 'Twenty', 3 => 'Thirty', 4 => 'Forty', 5 => 'Fifty',
+            6 => 'Sixty', 7 => 'Seventy', 8 => 'Eighty', 9 => 'Ninety'
+        );
+
+        if ($number < 20) {
+            return $ones[$number];
+        }
+
+        if ($number < 100) {
+            return $tens[intval($number / 10)] . ' ' . $ones[$number % 10];
+        }
+
+        if ($number < 1000) {
+            return $ones[intval($number / 100)] . ' Hundred ' . $this->numberToWords($number % 100);
+        }
+
+        if ($number < 100000) {
+            return $this->numberToWords(intval($number / 1000)) . ' Thousand ' . $this->numberToWords($number % 1000);
+        }
+
+        if ($number < 10000000) {
+            return $this->numberToWords(intval($number / 100000)) . ' Lakh ' . $this->numberToWords($number % 100000);
+        }
+
+        return $this->numberToWords(intval($number / 10000000)) . ' Crore ' . $this->numberToWords($number % 10000000);
+    }
+
     /* ---------------- Helpers ---------------- */
 
     private function mapReceipt(ReceiptModel $r): array
