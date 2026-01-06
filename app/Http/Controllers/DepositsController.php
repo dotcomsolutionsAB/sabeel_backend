@@ -49,7 +49,7 @@ class DepositsController extends Controller
                 'date'       => $request->input('date'),
                 'receipt_ids'=> $request->input('receipt_ids'),
                 'amount'     => $request->input('amount'),
-                'updated_by' => (int) Auth::id(),
+                'created_by' => (int) Auth::id(),
                 'remarks'    => $request->input('remarks'),
             ]);
 
