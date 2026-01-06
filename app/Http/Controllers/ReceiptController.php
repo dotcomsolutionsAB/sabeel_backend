@@ -430,7 +430,7 @@ class ReceiptController extends Controller
             ];
 
             // Render blade view to HTML
-            $html = view('receipts.receipt', $data)->render();
+            $html = view('receipts', $data)->render();
 
             // Initialize mPDF
             $mpdf = new Mpdf([
