@@ -124,7 +124,7 @@ class MumineenController extends Controller
 
             $q = MumineenModel::query()
                 ->where('hof_type', 'HOF')
-                ->select('id','family_id','its','name','sector','mobile','email')
+                ->select('id','family_id','its','name','sector','mobile','email', 'pic')
                 ->orderBy('id', 'desc');
 
             // search in name, its, sector, and also family member its numbers

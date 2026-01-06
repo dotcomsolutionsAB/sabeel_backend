@@ -476,7 +476,8 @@ class EstablishmentController extends Controller
                 if (!$hof) continue;
 
                 $partners[] = [
-                    'url'    => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+                    // 'url'    => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+                    'url'    => $hof->pic,
                     'name'   => (string) ($hof->name ?? ''),
                     'its'    => (string) ($hof->its ?? ''),
                     'sector' => (string) ($hof->sector ?? ''),

@@ -312,7 +312,8 @@ class MumineenSabeelController extends Controller
         return [
             'id'        => (string) ($hof->id ?? ''),
             'family_id' => (string) $family_id,
-            'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+            // 'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+            'url'       => $hof->pic,
 
             'name'      => (string) ($hof->name ?? ''),
             'its'       => (string) ($hof->its ?? ''),
