@@ -75,6 +75,51 @@ class DepositsController extends Controller
     }
 
     // Fetch Receipts based on receipt_ids, with pagination and optional receipt_no filter
+    // public function fetch(Request $request, $id = null)
+    // {
+    //     try {
+    //         // SINGLE: Fetch specific deposit by ID
+    //         if ($id !== null) {
+    //             // Fetch the deposit by ID
+    //             $deposit = DepositsModel::find($id);
+    //             if (!$deposit) return $this->error('Deposit not found.', 404);
+
+    //             // Return the deposit data
+    //             return $this->success('Deposit fetched successfully.', $deposit, 200);
+    //         }
+
+    //         // LIST: Fetch list of deposits (with optional filters)
+    //         $limit  = max(1, (int) $request->input('limit', 10)); // Default limit is 10
+    //         $offset = max(0, (int) $request->input('offset', 0)); // Default offset is 0
+    //         $receiptNo = trim((string) $request->input('receipt_no', '')); // Optional filter by receipt_no
+
+    //         // Start the query to fetch deposits
+    //         $query = DepositsModel::query()->orderBy('id', 'desc'); // Order by id by default
+
+    //         // Apply receipt_no filter (if provided)
+    //         if ($receiptNo !== '') {
+    //             $query->where('receipt_ids', 'like', "%{$receiptNo}%");
+    //         }
+
+    //         // Pagination
+    //         $total = $query->count(); // Get the total count of deposits
+    //         $deposits = $query->skip($offset)->take($limit)->get();
+
+    //         // Return success response with the data and pagination metadata
+    //         return $this->success('Deposits fetched successfully.', $deposits, 200, [
+    //             'pagination' => [
+    //                 'limit'  => $limit,
+    //                 'offset' => $offset,
+    //                 'count'  => count($deposits),
+    //                 'total'  => $total,
+    //             ]
+    //         ]);
+    //     } catch (\Throwable $e) {
+    //         // Handle any errors and log them
+    //         return $this->serverError($e, 'Deposit fetch failed');
+    //     }
+    // }
+
     public function fetch(Request $request, $id = null)
     {
         try {
@@ -84,8 +129,23 @@ class DepositsController extends Controller
                 $deposit = DepositsModel::find($id);
                 if (!$deposit) return $this->error('Deposit not found.', 404);
 
-                // Return the deposit data
-                return $this->success('Deposit fetched successfully.', $deposit, 200);
+                // Prepare the user data
+                $user = auth()->user();
+                $createdBy = [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                ];
+
+                // Fetch receipt details (id and receipt_no) related to this deposit
+                $receiptDetails = ReceiptModel::whereIn('id', explode(',', $deposit->receipt_ids))
+                    ->get(['id', 'receipt_no']);
+
+                // Return the deposit data with the receipt details
+                return $this->success('Deposit fetched successfully.', [
+                    'deposit' => $deposit,
+                    'created_by' => $createdBy,
+                    'receipt_details' => $receiptDetails,
+                ], 200);
             }
 
             // LIST: Fetch list of deposits (with optional filters)
@@ -98,12 +158,18 @@ class DepositsController extends Controller
 
             // Apply receipt_no filter (if provided)
             if ($receiptNo !== '') {
-                $query->where('receipt_ids', 'like', "%{$receiptNo}%");
+                // We filter based on the `receipt_no` column in the `t_receipts` table
+                $query->whereHas('receipts', function ($q) use ($receiptNo) {
+                    $q->where('receipt_no', 'like', "%{$receiptNo}%");
+                });
             }
 
             // Pagination
             $total = $query->count(); // Get the total count of deposits
             $deposits = $query->skip($offset)->take($limit)->get();
+
+            // Fetching the `id` and `receipt_no` for each deposit (fetch receipts associated with each deposit)
+            $deposits->load(['receipts:id,receipt_no']); // Assuming 'receipts' is a relationship defined in the Deposit model
 
             // Return success response with the data and pagination metadata
             return $this->success('Deposits fetched successfully.', $deposits, 200, [

@@ -17,4 +17,14 @@ class DepositsModel extends Model
         'created_by',
         'remarks',
     ];
+
+    protected $hidden = [
+        'created_at',
+        'updated_at',
+    ];
+
+    public function receipts()
+    {
+        return $this->hasMany(ReceiptModel::class, 'deposit_id');
+    }
 }
