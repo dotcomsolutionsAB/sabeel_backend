@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Auth;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\View;
-use Mpdf\Mpdf;
 use Illuminate\Validation\ValidationException;
 
 class DepositsController extends Controller

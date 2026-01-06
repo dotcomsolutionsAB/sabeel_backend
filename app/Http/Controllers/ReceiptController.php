@@ -18,6 +18,7 @@ use App\Models\MumineenModel;
 use App\Models\EstablishmentModel;
 use App\Models\YearModel;
 use App\Models\CounterModel;
+use Mpdf\Mpdf;
 
 class ReceiptController extends Controller
 {
@@ -393,7 +394,7 @@ class ReceiptController extends Controller
         }
     }
 
-    /**
+   /**
      * Generate and return receipt PDF
      * 
      * @param int $id Receipt ID
@@ -429,7 +430,7 @@ class ReceiptController extends Controller
             ];
 
             // Render blade view to HTML
-            $html = View::make('receipts.receipt', $data)->render();
+            $html = view('receipts.receipt', $data)->render();
 
             // Initialize mPDF
             $mpdf = new Mpdf([
