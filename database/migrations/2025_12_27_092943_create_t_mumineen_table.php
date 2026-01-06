@@ -31,6 +31,7 @@ return new class extends Migration
 
             $table->enum('gender', ['male', 'female']);
             $table->integer('age')->nullable();
+            $table->string('pic');
 
             $table->enum('status', ['active', 'closed']);
             $table->timestamps();

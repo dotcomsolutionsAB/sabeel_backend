@@ -281,7 +281,8 @@ class MumineenController extends Controller
             $data = [
                 'id'        => (string) $hof->id,
                 'family_id' => (string) $familyId,
-                'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+                // 'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
+                'url'       => (string) $hof->pic,
 
                 'name'   => (string) ($hof->name ?? ''),
                 'its'    => (string) ($hof->its ?? ''),
@@ -447,6 +448,30 @@ class MumineenController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sectors fetch failed');
+        }
+    }
+
+    public function syncPhotos()
+    {
+        // Assuming this method will run for each Mumineen record
+
+        $itsValue = $this->its;  // Get the ITS value of the current record
+        
+        if ($itsValue) {
+            // Construct the image filename
+            $imagePath = storage_path("app/public/uploads/its_images/{$itsValue}.jpg");
+
+            // Check if the image exists in the folder
+            if (file_exists($imagePath)) {
+                // If found, update the 'pic' field with the full URL path
+                $this->pic = url("storage/uploads/its_images/{$itsValue}.jpg");
+            } else {
+                // If not found, set a placeholder image
+                $this->pic = url('storage/uploads/its_images/placeholder.jpg');
+            }
+            
+            // Save the changes to the database
+            $this->save();
         }
     }
 
@@ -636,7 +661,8 @@ class MumineenController extends Controller
             $out[] = [
                 'id'        => (string) $m->id,
                 'family_id' => (string) $m->family_id,
-                'url'       => "https://talabulilm.com/mumin_images/{$m->its}.png",
+                // 'url'       => "https://talabulilm.com/mumin_images/{$m->its}.png",
+                'url'       => (string) $m->pic,
 
                 'name'      => (string) $m->name,
                 'its'       => (string) $m->its,

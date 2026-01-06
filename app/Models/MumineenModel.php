@@ -23,6 +23,7 @@ class MumineenModel extends Model
         'email',
         'gender',
         'age',
+        'pic',
         'status',
     ];
 
