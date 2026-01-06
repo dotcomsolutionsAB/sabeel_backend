@@ -451,30 +451,18 @@ class MumineenController extends Controller
         }
     }
 
-    public function syncPhotos()
+    public function syncAllPhotos()
     {
-        // Assuming this method will run for each Mumineen record
+        $mumineens = MumineenModel::all(); // Fetch all Mumineen records
 
-        $itsValue = $this->its;  // Get the ITS value of the current record
-
-        dd($itsValue);
-        
-        if ($itsValue) {
-            // Construct the image filename
-            $imagePath = storage_path("app/public/uploads/its_images/{$itsValue}.jpg");
-
-            // Check if the image exists in the folder
-            if (file_exists($imagePath)) {
-                // If found, update the 'pic' field with the full URL path
-                $this->pic = url("storage/uploads/its_images/{$itsValue}.jpg");
-            } else {
-                // If not found, set a placeholder image
-                $this->pic = url('storage/uploads/its_images/placeholder.jpg');
-            }
-            
-            // Save the changes to the database
-            $this->save();
+        foreach ($mumineens as $mumineen) {
+            $mumineen->syncPhotos(); // Sync photos for each Mumineen
+            $mumineen->save(); // Save the updated record
         }
+
+        return response()->json([
+            'message' => 'Photos synced successfully.',
+        ], 200);
     }
 
     /* ----------------- Helpers ----------------- */

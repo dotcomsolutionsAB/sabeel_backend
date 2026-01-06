@@ -47,4 +47,20 @@ class MumineenModel extends Model
     {
         return $this->hasMany(MumineenSabeelModel::class, 'family_id', 'family_id');
     }
+
+    public function syncPhotos()
+    {
+        $itsValue = $this->its;  // Get the ITS value of the current record
+
+        // Check if the image exists
+        $imagePath = public_path('storage/uploads/its_images/' . $itsValue . '.jpg');
+
+        if (file_exists($imagePath)) {
+            // If image exists, set the full URL
+            $this->pic = url('storage/uploads/its_images/' . $itsValue . '.jpg');
+        } else {
+            // If not, set the placeholder image
+            $this->pic = url('storage/uploads/its_images/placeholder.jpg');
+        }
+    }
 }
