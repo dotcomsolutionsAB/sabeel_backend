@@ -27,4 +27,9 @@ class DepositsModel extends Model
     {
         return $this->hasMany(ReceiptModel::class, 'deposit_id');
     }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }
