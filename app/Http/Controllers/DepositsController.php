@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-use App\Models\DepositModel;
+use App\Models\DepositsModel;
 use App\Models\ReceiptModel;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponse;
