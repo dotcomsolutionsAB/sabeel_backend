@@ -35,12 +35,16 @@ class DepositsController extends Controller
             return $this->error('One or more receipt IDs are invalid.', 400);
         }
 
+        // Generate a unique 10-digit deposit_id
+        $depositId = $this->generateUniqueDepositId();
+
         // Start a database transaction to ensure both insertions happen atomically
         DB::beginTransaction();
 
         try {
             // Create the deposit record
             $deposit = DepositsModel::create([
+                'deposit_id' => $depositId, // Store the 10-digit unique deposit ID
                 'date'       => $request->input('date'),
                 'receipt_ids'=> $request->input('receipt_ids'),
                 'amount'     => $request->input('amount'),
