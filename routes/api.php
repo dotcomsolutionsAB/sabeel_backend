@@ -45,6 +45,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{family_id}', [MumineenController::class, 'edit']);
         Route::delete('/delete/{id}', [MumineenController::class, 'delete']);
         Route::post('/export', [MumineenController::class, 'export']);
+        Route::get('/sync_image', [MumineenController::class, 'syncPhotos']);
     });
 
     // mumineen-sabeel route

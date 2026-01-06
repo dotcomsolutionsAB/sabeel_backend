@@ -456,6 +456,8 @@ class MumineenController extends Controller
         // Assuming this method will run for each Mumineen record
 
         $itsValue = $this->its;  // Get the ITS value of the current record
+
+        dd($itsValue);
         
         if ($itsValue) {
             // Construct the image filename
