@@ -1,8 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
-use App\Models\Deposit;
-use App\Models\Receipt;
+use App\Models\DepositModel;
+use App\Models\ReceiptModel;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +28,7 @@ class DepositsController extends Controller
         $receiptIds = explode(',', $request->input('receipt_ids'));
 
         // Validate each receipt ID
-        $validReceipts = Receipt::whereIn('id', $receiptIds)->get();
+        $validReceipts = ReceiptModel::whereIn('id', $receiptIds)->get();
 
         if (count($validReceipts) !== count($receiptIds)) {
             // If the number of valid receipts doesn't match the number of provided IDs
@@ -40,7 +40,7 @@ class DepositsController extends Controller
 
         try {
             // Create the deposit record
-            $deposit = Deposit::create([
+            $deposit = DepositsModel::create([
                 'date'       => $request->input('date'),
                 'receipt_ids'=> $request->input('receipt_ids'),
                 'amount'     => $request->input('amount'),
@@ -75,7 +75,7 @@ class DepositsController extends Controller
             // SINGLE: Fetch specific deposit by ID
             if ($id !== null) {
                 // Fetch the deposit by ID
-                $deposit = Deposit::find($id);
+                $deposit = DepositsModel::find($id);
                 if (!$deposit) return $this->error('Deposit not found.', 404);
 
                 // Return the deposit data
@@ -88,7 +88,7 @@ class DepositsController extends Controller
             $receiptNo = trim((string) $request->input('receipt_no', '')); // Optional filter by receipt_no
 
             // Start the query to fetch deposits
-            $query = Deposit::query()->orderBy('id', 'desc'); // Order by id by default
+            $query = DepositsModel::query()->orderBy('id', 'desc'); // Order by id by default
 
             // Apply receipt_no filter (if provided)
             if ($receiptNo !== '') {
@@ -133,7 +133,7 @@ class DepositsController extends Controller
         try {
             // Step 1: Remove existing deposit_id from previously mapped receipts
             // Find all receipts that are mapped to the old deposit and reset their deposit_id
-            $oldReceipts = Receipt::where('deposit_id', $id)->get();
+            $oldReceipts = ReceiptModel::where('deposit_id', $id)->get();
             foreach ($oldReceipts as $receipt) {
                 $receipt->update([
                     'deposit_id' => null,  // Remove the old deposit_id
@@ -142,7 +142,7 @@ class DepositsController extends Controller
 
             // Step 2: Update/Create the new deposit record
             // Update the existing deposit record with the new details (date, amount, remarks)
-            $deposit = Deposit::findOrFail($id);
+            $deposit = DepositsModel::findOrFail($id);
             $deposit->update([
                 'receipt_ids' => $request->input('receipt_ids'),
                 'amount'      => $request->input('amount'),
@@ -151,7 +151,7 @@ class DepositsController extends Controller
 
             // Step 3: Update the receipts with the new deposit_id
             // Now, assign the new deposit_id to the valid receipts
-            $validReceipts = Receipt::whereIn('id', $receiptIds)->get();
+            $validReceipts = ReceiptModel::whereIn('id', $receiptIds)->get();
 
             // Ensure all receipt_ids are valid before updating
             if (count($validReceipts) !== count($receiptIds)) {
@@ -189,14 +189,14 @@ class DepositsController extends Controller
 
         try {
             // Step 1: Find the deposit record by id
-            $deposit = Deposit::find($id);
+            $deposit = DepositsModel::find($id);
             if (!$deposit) {
                 // If the deposit is not found, return an error
                 return $this->error('Deposit not found.', 404);
             }
 
             // Step 2: Remove the deposit_id from the receipts associated with this deposit
-            $receipts = Receipt::where('deposit_id', $id)->get();
+            $receipts = ReceiptModel::where('deposit_id', $id)->get();
 
             // If receipts are found, reset their deposit_id to null
             foreach ($receipts as $receipt) {
