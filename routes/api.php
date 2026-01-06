@@ -10,6 +10,7 @@ use App\Http\Controllers\EstablishmentController;
 use App\Http\Controllers\EstablishmentSabeelController;
 use App\Http\Controllers\CounterController;
 use App\Http\Controllers\ReceiptController;
+use App\Http\Controllers\DepositsController;
 use App\Http\Controllers\YearController;
 use App\Http\Controllers\MumineenEstablishmentController;
 use App\Http\Controllers\DashboardController;
@@ -102,6 +103,15 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{id}', [ReceiptController::class, 'edit']);
         Route::delete('/delete/{id}', [ReceiptController::class, 'delete']);
         Route::post('/export', [ReceiptController::class, 'export']);
+    });
+
+    // deposits route
+    Route::prefix('deposits')->group(function () {
+        Route::post('/create', [DepositsController::class, 'create']);
+        Route::post('/retrieve/{id?}', [DepositsController::class, 'fetch']);
+        Route::post('/update/{id}', [DepositsController::class, 'edit']);
+        Route::delete('/delete/{id}', [DepositsController::class, 'delete']);
+        Route::post('/export', [DepositsController::class, 'export']);
     });
 
     

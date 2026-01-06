@@ -15,6 +15,7 @@ class ReceiptModel extends Model
         'establishment_id',
         'receipt_no',
         'date',
+        'deposit_id',
         'name',
         'its',
         'mode',

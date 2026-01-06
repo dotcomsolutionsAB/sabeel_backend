@@ -18,6 +18,8 @@ return new class extends Migration
 
             $table->string('receipt_no');
             $table->date('date');
+            
+            $table->unsignedBigInteger('deposit_id');
 
             $table->string('name');
             $table->string('its')->nullable();
