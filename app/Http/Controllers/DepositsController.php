@@ -225,4 +225,21 @@ class DepositsController extends Controller
             return $this->serverError($e);
         }
     }
+
+    // helper
+    /**
+     * Generate a unique 10-digit deposit_id.
+     * This method generates a random 10-digit deposit_id and checks its uniqueness.
+     *
+     * @return string
+     */
+    private function generateUniqueDepositId()
+    {
+        do {
+            // Generate a random 10-digit number
+            $depositId = str_pad(rand(1000000000, 9999999999), 10, '0', STR_PAD_LEFT);
+        } while (DepositsModel::where('deposit_id', $depositId)->exists()); // Ensure uniqueness
+
+        return $depositId;
+    }
 }
