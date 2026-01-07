@@ -182,7 +182,7 @@ class ReceiptController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'type' => 'required|in:family,establishment',
+                'type' => 'nullable|in:family,establishment',
 
                 'family_id'        => 'nullable|integer',
                 'establishment_id' => 'nullable|integer',
@@ -207,10 +207,17 @@ class ReceiptController extends Controller
                 ->where('status', 'active')
                 ->orderBy('id', 'desc');
 
+            // Adjust the query based on the `type`
             if ($type === 'family') {
                 $q->whereNotNull('family_id');
-            } else {
+            } elseif ($type === 'establishment') {
                 $q->whereNotNull('establishment_id');
+            } else {
+                // If `type` is null, include both family and establishment
+                $q->where(function($query) {
+                    $query->whereNotNull('family_id')
+                        ->orWhereNotNull('establishment_id');
+                });
             }
 
             if ($request->filled('family_id')) {
