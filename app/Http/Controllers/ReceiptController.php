@@ -98,7 +98,7 @@ class ReceiptController extends Controller
             } else {
                 $estId = (int) $request->establishment_id;
 
-                $est = EstablishmentModel::find($estId);
+                $est = EstablishmentModel::where('establishment_id', $estId)->first();
                 if (!$est) {
                     return $this->error('Invalid establishment_id. Establishment not found.', 404);
                 }
