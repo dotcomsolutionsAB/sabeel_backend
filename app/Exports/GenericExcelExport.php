@@ -34,7 +34,7 @@ class GenericExcelExport implements
     ) {
         $this->rows          = $rows;
         $this->headings      = array_values($headings); // 🔑 force reindex
-        $this->columnFormats = $columnFormats;
+        // $this->columnFormats = $columnFormats;
         $this->alignments    = $alignments;
     }
 
