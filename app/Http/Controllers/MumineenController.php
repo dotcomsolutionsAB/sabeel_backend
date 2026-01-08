@@ -317,8 +317,6 @@ class MumineenController extends Controller
         try {
             [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
-            $limit  = max(1, (int) $request->input('limit', 50));
-            $offset = max(0, (int) $request->input('offset', 0));
             $search = trim((string) $request->input('search', ''));
             $sector = trim((string) $request->input('sector', ''));
             $filter = trim((string) $request->input('filter', ''));
@@ -326,7 +324,6 @@ class MumineenController extends Controller
             $q = MumineenModel::where('hof_type','HOF')
                 ->orderBy('name','asc');
 
-            $search = trim((string) $request->input('search', ''));
 
             if ($search !== '') {
                 $q->where(function ($w) use ($search) {
@@ -341,23 +338,20 @@ class MumineenController extends Controller
                 });
             }
 
-            if ($request->filled('sector')) {
-                $q->where('sector',$request->sector);
-            }
+            if ($sector !== '') $q->where('sector', $sector);
 
-            if ($request->filled('filter')) {
-                $q = $this->applyFilter($q,$request->filter,$currentYear,$prevYear);
-            }
+            if ($filter !== '') $q = $this->applyFilter($q, $filter, $currentYear, $prevYear);
 
+            // ✅ NO pagination
             $rows = $this->buildPayload(
-                $q->skip($offset)->take($limit)->get(),
+                $q->get(),
                 $currentYear,
                 $prevYear,
                 $yearsList
             );
 
             $excelRows = [];
-            $sn = $offset + 1;
+            $sn = 1;
 
             foreach ($rows as $r) {
                 $excelRows[] = [
@@ -374,9 +368,6 @@ class MumineenController extends Controller
             $export = new GenericExcelExport(
                 $excelRows,
                 ['SN','ITS','Name','Mobile','Email','Sector','Sabeel'],
-                // [
-                //     'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
-                // ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
                     'B' => Alignment::HORIZONTAL_CENTER,
