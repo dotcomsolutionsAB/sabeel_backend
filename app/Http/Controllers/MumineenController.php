@@ -319,12 +319,26 @@ class MumineenController extends Controller
 
             $limit  = max(1, (int) $request->input('limit', 50));
             $offset = max(0, (int) $request->input('offset', 0));
+            $search = trim((string) $request->input('search', ''));
+            $sector = trim((string) $request->input('sector', ''));
+            $filter = trim((string) $request->input('filter', ''));
 
             $q = MumineenModel::where('hof_type','HOF')
                 ->orderBy('name','asc');
 
-            if ($request->filled('search')) {
-                $q->where('name','like',"%{$request->search}%");
+            $search = trim((string) $request->input('search', ''));
+
+            if ($search !== '') {
+                $q->where(function ($w) use ($search) {
+                    $w->where('name', 'like', "%{$search}%")
+                    ->orWhere('its', 'like', "%{$search}%")
+                    ->orWhere('sector', 'like', "%{$search}%")
+                    ->orWhereIn('family_id', function($sub) use ($search) {
+                        $sub->from('t_mumineen')
+                            ->select('family_id')
+                            ->where('its', 'like', "%{$search}%");
+                    });
+                });
             }
 
             if ($request->filled('sector')) {
@@ -360,9 +374,9 @@ class MumineenController extends Controller
             $export = new GenericExcelExport(
                 $excelRows,
                 ['SN','ITS','Name','Mobile','Email','Sector','Sabeel'],
-                [
-                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
-                ],
+                // [
+                //     'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+                // ],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
                     'B' => Alignment::HORIZONTAL_CENTER,
