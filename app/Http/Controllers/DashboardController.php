@@ -17,6 +17,7 @@ use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\ReceiptModel;
+use Illuminate\Database\Eloquent\Builder;
 
 class DashboardController extends Controller
 {
@@ -320,5 +321,40 @@ class DashboardController extends Controller
         }
 
         return [$current, $previous];
+    }
+
+    private function applyFilter(Builder $q, string $filter, $currentYear, $prevYear): Builder
+    {
+        $filter = strtolower(trim($filter));
+
+        // Apply only establishment-related filters here
+        switch ($filter) {
+            case 'active':
+                return $q->where('status', 'active');
+
+            case 'inactive':
+                return $q->where('status', 'inactive');
+
+            // Example: establishments that have sabeel > 0 for current year
+            case 'with_sabeel':
+                return $q->whereExists(function ($sub) use ($currentYear) {
+                    $sub->from('t_establishment_sabeel as es')
+                        ->whereColumn('es.establishment_id', 't_establishment.establishment_id')
+                        ->where('es.year', $currentYear)
+                        ->where('es.sabeel', '>', 0);
+                });
+
+            // Example: establishments that have NO sabeel > 0 for current year
+            case 'no_sabeel':
+                return $q->whereNotExists(function ($sub) use ($currentYear) {
+                    $sub->from('t_establishment_sabeel as es')
+                        ->whereColumn('es.establishment_id', 't_establishment.establishment_id')
+                        ->where('es.year', $currentYear)
+                        ->where('es.sabeel', '>', 0);
+                });
+
+            default:
+                return $q; // unknown filter -> no changes
+        }
     }
 }
