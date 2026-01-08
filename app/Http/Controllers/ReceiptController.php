@@ -338,30 +338,117 @@ class ReceiptController extends Controller
     }
 
     // export
+    // public function export(Request $request)
+    // {
+    //     try {
+    //         $limit  = max(1, (int) $request->input('limit', 50));
+    //         $offset = max(0, (int) $request->input('offset', 0));
+
+    //         $q = ReceiptModel::where('status','active')
+    //             ->orderBy('receipt_no','desc');
+
+    //         if ($request->type === 'family') {
+    //             $q->whereNotNull('family_id');
+    //         } else {
+    //             $q->whereNotNull('establishment_id');
+    //         }
+
+    //         if ($request->filled('family_id')) {
+    //             $q->where('family_id',$request->family_id);
+    //         }
+
+    //         if ($request->filled('establishment_id')) {
+    //             $q->where('establishment_id',$request->establishment_id);
+    //         }
+
+    //         $rows = $q->skip($offset)->take($limit)->get();
+
+    //         $excelRows = [];
+    //         $sn = $offset + 1;
+
+    //         foreach ($rows as $r) {
+    //             $excelRows[] = [
+    //                 $sn++,
+    //                 $r->receipt_no,
+    //                 optional($r->date)->format('d-m-Y'),
+    //                 $r->name,
+    //                 (float) $r->amount,
+    //                 $r->mode,
+    //                 ucfirst($r->status),
+    //             ];
+    //         }
+
+    //         $export = new GenericExcelExport(
+    //             $excelRows,
+    //             ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
+    //             // [
+    //             //     'E' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
+    //             // ],
+    //             [
+    //                 'A' => Alignment::HORIZONTAL_CENTER,
+    //                 'B' => Alignment::HORIZONTAL_CENTER,
+    //                 'C' => Alignment::HORIZONTAL_CENTER,
+    //                 'D' => Alignment::HORIZONTAL_LEFT,
+    //                 'E' => Alignment::HORIZONTAL_RIGHT,
+    //                 'F' => Alignment::HORIZONTAL_CENTER,
+    //                 'G' => Alignment::HORIZONTAL_CENTER,
+    //             ]
+    //         );
+
+    //         return ExcelExportHelper::store($export,'receipt','receipt_export');
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Receipt export failed');
+    //     }
+    // }
     public function export(Request $request)
     {
         try {
             $limit  = max(1, (int) $request->input('limit', 50));
             $offset = max(0, (int) $request->input('offset', 0));
 
-            $q = ReceiptModel::where('status','active')
-                ->orderBy('receipt_no','desc');
+            $type     = $request->input('type'); // family | establishment | null
+            $dateFrom = $request->input('date_from');
+            $dateTo   = $request->input('date_to');
 
-            if ($request->type === 'family') {
+            $q = ReceiptModel::query()
+                ->where('status', 'active')
+                ->orderBy('receipt_no', 'desc');
+
+            // ✅ SAME TYPE LOGIC as fetch()
+            if ($type === 'family') {
                 $q->whereNotNull('family_id');
-            } else {
+            } elseif ($type === 'establishment') {
                 $q->whereNotNull('establishment_id');
+            } else {
+                $q->where(function ($query) {
+                    $query->whereNotNull('family_id')
+                        ->orWhereNotNull('establishment_id');
+                });
             }
 
+            // ✅ SAME filters as fetch()
             if ($request->filled('family_id')) {
-                $q->where('family_id',$request->family_id);
+                $q->where('family_id', (int) $request->family_id);
             }
 
             if ($request->filled('establishment_id')) {
-                $q->where('establishment_id',$request->establishment_id);
+                $q->where('establishment_id', (int) $request->establishment_id);
+            }
+
+            if (!empty($dateFrom)) {
+                $q->whereDate('date', '>=', $dateFrom);
+            }
+
+            if (!empty($dateTo)) {
+                $q->whereDate('date', '<=', $dateTo);
             }
 
             $rows = $q->skip($offset)->take($limit)->get();
+
+            if ($rows->isEmpty()) {
+                return $this->error('No data found for export.', 404);
+            }
 
             $excelRows = [];
             $sn = $offset + 1;
@@ -382,9 +469,6 @@ class ReceiptController extends Controller
                 $excelRows,
                 ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
                 [
-                    'E' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ '
-                ],
-                [
                     'A' => Alignment::HORIZONTAL_CENTER,
                     'B' => Alignment::HORIZONTAL_CENTER,
                     'C' => Alignment::HORIZONTAL_CENTER,
@@ -395,7 +479,7 @@ class ReceiptController extends Controller
                 ]
             );
 
-            return ExcelExportHelper::store($export,'receipt','receipt_export');
+            return ExcelExportHelper::store($export, 'receipt', 'receipt_export');
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Receipt export failed');

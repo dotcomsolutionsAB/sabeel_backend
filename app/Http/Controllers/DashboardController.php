@@ -189,83 +189,286 @@ class DashboardController extends Controller
         }
     }
 
+    // public function exportEstablishment(Request $request)
+    // {
+    //     try {
+    //         [$currentYear, $prevYear] = $this->resolveYears();
+
+    //         $limit  = max(1, (int) $request->input('limit', 50));
+    //         $offset = max(0, (int) $request->input('offset', 0));
+
+    //         // ---------------- Base Query ----------------
+    //         $q = EstablishmentModel::query()
+    //             ->orderBy('name','asc');
+
+    //         if ($request->filled('filter')) {
+    //             $q = $this->applyFilter(
+    //                 $q,
+    //                 $request->filter,
+    //                 $currentYear,
+    //                 $prevYear
+    //             );
+    //         }
+
+    //         $rows = $q->skip($offset)->take($limit)->get();
+
+    //         if ($rows->isEmpty()) {
+    //             return $this->error('No data found for export.', 404);
+    //         }
+
+    //         // ---------------- PRELOAD DATA ----------------
+    //         $estIds = $rows->pluck('establishment_id')->all();
+
+    //         // Current year sabeel
+    //         $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id',$estIds)
+    //             ->where('year',$currentYear)
+    //             ->pluck('sabeel','establishment_id');
+
+    //         // Partner links
+    //         $links = MumineenEstablishmentModel::whereIn('establishment_id',$estIds)->get();
+
+    //         $familyIds = $links->pluck('family_id')->unique()->all();
+
+    //         $hofs = MumineenModel::whereIn('family_id',$familyIds)
+    //             ->where('hof_type','HOF')
+    //             ->get()
+    //             ->keyBy('family_id');
+
+    //         $partnersByEst = [];
+
+    //         foreach ($links as $l) {
+    //             if (!isset($hofs[$l->family_id])) continue;
+    //             $partnersByEst[$l->establishment_id][] = $hofs[$l->family_id]->name;
+    //         }
+
+    //         // ---------------- BUILD EXCEL ROWS ----------------
+    //         $excelRows = [];
+    //         $sn = $offset + 1;
+
+    //         foreach ($rows as $e) {
+    //             $excelRows[] = [
+    //                 $sn++,                                   // SN
+    //                 $e->name,                               // Name
+    //                 '-',                                    // Mobile (not available)
+    //                 '-',                                    // Email (not available)
+    //                 $e->address ?? '-',                     // Address
+    //                 isset($partnersByEst[$e->establishment_id])
+    //                     ? implode(', ', $partnersByEst[$e->establishment_id])
+    //                     : '-',                               // Partners
+    //                 (float) ($sabeelMap[$e->establishment_id] ?? 0), // Sabeel
+    //             ];
+    //         }
+
+    //         // ---------------- EXPORT ----------------
+    //         $export = new GenericExcelExport(
+    //             $excelRows,
+    //             ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
+    //             // [
+    //             //     'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ ',
+    //             // ],
+    //             [
+    //                 'A' => Alignment::HORIZONTAL_CENTER,
+    //                 'B' => Alignment::HORIZONTAL_LEFT,
+    //                 'C' => Alignment::HORIZONTAL_CENTER,
+    //                 'D' => Alignment::HORIZONTAL_LEFT,
+    //                 'E' => Alignment::HORIZONTAL_LEFT,
+    //                 'F' => Alignment::HORIZONTAL_LEFT,
+    //                 'G' => Alignment::HORIZONTAL_RIGHT,
+    //             ]
+    //         );
+
+    //         return ExcelExportHelper::store(
+    //             $export,
+    //             'dashboard',
+    //             'dashboard_establishment'
+    //         );
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Establishment export failed');
+    //     }
+    // }
     public function exportEstablishment(Request $request)
     {
         try {
-            [$currentYear, $prevYear] = $this->resolveYears();
+            $currentYear = now()->year;
 
-            $limit  = max(1, (int) $request->input('limit', 50));
-            $offset = max(0, (int) $request->input('offset', 0));
+            $filter = trim((string) $request->input('filter', ''));
 
-            // ---------------- Base Query ----------------
-            $q = EstablishmentModel::query()
-                ->orderBy('name','asc');
-
-            if ($request->filled('filter')) {
-                $q = $this->applyFilter(
-                    $q,
-                    $request->filter,
-                    $currentYear,
-                    $prevYear
-                );
+            if (!in_array($filter, ['family','due_family','establishment','due_establishment'], true)) {
+                return $this->error('Invalid filter. Allowed: family, due_family, establishment, due_establishment', 422);
             }
 
-            $rows = $q->skip($offset)->take($limit)->get();
+            /* ============================================================
+            FAMILY EXPORT
+            ============================================================ */
+            if ($filter === 'family' || $filter === 'due_family') {
+
+                // Base: all HOF
+                $q = MumineenModel::query()
+                    ->where('hof_type', 'HOF')
+                    ->select('id','family_id','its','name','sector','mobile','email')
+                    ->orderBy('name', 'asc');
+
+                // If due_family -> only those having due (paid < sabeel)
+                if ($filter === 'due_family') {
+                    $q->whereIn('family_id', function ($sub) use ($currentYear) {
+                        $sub->from('t_mumineen_sabeel as s')
+                            ->leftJoin('t_receipts as r', function ($j) {
+                                $j->on('s.family_id', '=', 'r.family_id')
+                                ->where('r.status', 'active');
+                            })
+                            ->where('s.year', $currentYear)
+                            ->select('s.family_id')
+                            ->groupBy('s.family_id')
+                            ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
+                    });
+                }
+
+                $rows = $q->get();
+
+                if ($rows->isEmpty()) {
+                    return $this->error('No data found for export.', 404);
+                }
+
+                // preload sabeel map (current year)
+                $familyIds = $rows->pluck('family_id')->unique()->all();
+
+                $sabeelMap = DB::table('t_mumineen_sabeel')
+                    ->whereIn('family_id', $familyIds)
+                    ->where('year', $currentYear)
+                    ->pluck('sabeel', 'family_id');
+
+                // paid map (active receipts)
+                $paidMap = DB::table('t_receipts')
+                    ->whereIn('family_id', $familyIds)
+                    ->where('status', 'active')
+                    ->groupBy('family_id')
+                    ->select('family_id', DB::raw('SUM(amount) as paid'))
+                    ->pluck('paid', 'family_id');
+
+                $excelRows = [];
+                $sn = 1;
+
+                foreach ($rows as $m) {
+                    $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
+                    $paid   = (float) ($paidMap[$m->family_id] ?? 0);
+                    $due    = max(0, $sabeel - $paid);
+
+                    $excelRows[] = [
+                        $sn++,
+                        $m->its,
+                        $m->name,
+                        $m->mobile ?? '-',
+                        $m->email ?? '-',
+                        $m->sector ?? '-',
+                        $sabeel,
+                        $paid,
+                        $due,
+                    ];
+                }
+
+                $export = new GenericExcelExport(
+                    $excelRows,
+                    ['SN','ITS','Name','Mobile','Email','Sector','Sabeel','Paid','Due'],
+                    [
+                        'A' => Alignment::HORIZONTAL_CENTER,
+                        'B' => Alignment::HORIZONTAL_CENTER,
+                        'C' => Alignment::HORIZONTAL_LEFT,
+                        'D' => Alignment::HORIZONTAL_CENTER,
+                        'E' => Alignment::HORIZONTAL_LEFT,
+                        'F' => Alignment::HORIZONTAL_CENTER,
+                        'G' => Alignment::HORIZONTAL_RIGHT,
+                        'H' => Alignment::HORIZONTAL_RIGHT,
+                        'I' => Alignment::HORIZONTAL_RIGHT,
+                    ]
+                );
+
+                return ExcelExportHelper::store($export, 'dashboard', "dashboard_{$filter}");
+            }
+
+            /* ============================================================
+            ESTABLISHMENT EXPORT
+            ============================================================ */
+            // Base establishment query
+            $q = EstablishmentModel::query()->orderBy('name', 'asc');
+
+            // due_establishment -> only those having due (paid < sabeel)
+            if ($filter === 'due_establishment') {
+                $q->whereIn('establishment_id', function ($sub) use ($currentYear) {
+                    $sub->from('t_establishment_sabeel as s')
+                        ->leftJoin('t_receipts as r', function ($j) {
+                            $j->on('s.establishment_id', '=', 'r.establishment_id')
+                            ->where('r.status', 'active');
+                        })
+                        ->where('s.year', $currentYear)
+                        ->select('s.establishment_id')
+                        ->groupBy('s.establishment_id')
+                        ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
+                });
+            }
+
+            $rows = $q->get();
 
             if ($rows->isEmpty()) {
                 return $this->error('No data found for export.', 404);
             }
 
-            // ---------------- PRELOAD DATA ----------------
+            // preload data like your old code
             $estIds = $rows->pluck('establishment_id')->all();
 
-            // Current year sabeel
-            $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id',$estIds)
-                ->where('year',$currentYear)
-                ->pluck('sabeel','establishment_id');
+            $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+                ->where('year', $currentYear)
+                ->pluck('sabeel', 'establishment_id');
+
+            // paid map for establishments
+            $paidMap = DB::table('t_receipts')
+                ->whereIn('establishment_id', $estIds)
+                ->where('status', 'active')
+                ->groupBy('establishment_id')
+                ->select('establishment_id', DB::raw('SUM(amount) as paid'))
+                ->pluck('paid', 'establishment_id');
 
             // Partner links
-            $links = MumineenEstablishmentModel::whereIn('establishment_id',$estIds)->get();
-
+            $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)->get();
             $familyIds = $links->pluck('family_id')->unique()->all();
 
-            $hofs = MumineenModel::whereIn('family_id',$familyIds)
-                ->where('hof_type','HOF')
+            $hofs = MumineenModel::whereIn('family_id', $familyIds)
+                ->where('hof_type', 'HOF')
                 ->get()
                 ->keyBy('family_id');
 
             $partnersByEst = [];
-
             foreach ($links as $l) {
                 if (!isset($hofs[$l->family_id])) continue;
                 $partnersByEst[$l->establishment_id][] = $hofs[$l->family_id]->name;
             }
 
-            // ---------------- BUILD EXCEL ROWS ----------------
             $excelRows = [];
-            $sn = $offset + 1;
+            $sn = 1;
 
             foreach ($rows as $e) {
+                $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
+                $paid   = (float) ($paidMap[$e->establishment_id] ?? 0);
+                $due    = max(0, $sabeel - $paid);
+
                 $excelRows[] = [
-                    $sn++,                                   // SN
-                    $e->name,                               // Name
-                    '-',                                    // Mobile (not available)
-                    '-',                                    // Email (not available)
-                    $e->address ?? '-',                     // Address
+                    $sn++,
+                    $e->name,
+                    '-',
+                    '-',
+                    $e->address ?? '-',
                     isset($partnersByEst[$e->establishment_id])
                         ? implode(', ', $partnersByEst[$e->establishment_id])
-                        : '-',                               // Partners
-                    (float) ($sabeelMap[$e->establishment_id] ?? 0), // Sabeel
+                        : '-',
+                    $sabeel,
+                    $paid,
+                    $due,
                 ];
             }
 
-            // ---------------- EXPORT ----------------
             $export = new GenericExcelExport(
                 $excelRows,
-                ['SN','Name','Mobile','Email','Address','Partners','Sabeel'],
-                [
-                    'G' => '_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ ',
-                ],
+                ['SN','Name','Mobile','Email','Address','Partners','Sabeel','Paid','Due'],
                 [
                     'A' => Alignment::HORIZONTAL_CENTER,
                     'B' => Alignment::HORIZONTAL_LEFT,
@@ -274,14 +477,12 @@ class DashboardController extends Controller
                     'E' => Alignment::HORIZONTAL_LEFT,
                     'F' => Alignment::HORIZONTAL_LEFT,
                     'G' => Alignment::HORIZONTAL_RIGHT,
+                    'H' => Alignment::HORIZONTAL_RIGHT,
+                    'I' => Alignment::HORIZONTAL_RIGHT,
                 ]
             );
 
-            return ExcelExportHelper::store(
-                $export,
-                'dashboard',
-                'dashboard_establishment'
-            );
+            return ExcelExportHelper::store($export, 'dashboard', "dashboard_{$filter}");
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment export failed');
