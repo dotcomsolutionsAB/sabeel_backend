@@ -46,19 +46,34 @@ class GenericExcelExport implements
         return $this->rows;
     }
 
+    // public function styles(Worksheet $sheet)
+    // {
+    //     // ✅ Call trait method DIRECTLY
+    //     $this->styles($sheet);
+
+    //     // Column alignment
+    //     foreach ($this->alignments as $col => $align) {
+    //         $this->alignColumn(
+    //             $sheet,
+    //             "{$col}2:{$col}{$sheet->getHighestRow()}",
+    //             $align
+    //         );
+    //     }
+    // }
+
     public function styles(Worksheet $sheet)
     {
-        // ✅ Call trait method DIRECTLY
-        $this->styles($sheet);
+        // ✅ apply common header + borders
+        $this->applyCommonStyles($sheet);
 
-        // Column alignment
+        // ✅ Column alignment
+        $highestRow = $sheet->getHighestRow();
         foreach ($this->alignments as $col => $align) {
-            $this->alignColumn(
-                $sheet,
-                "{$col}2:{$col}{$sheet->getHighestRow()}",
-                $align
-            );
+            $this->alignColumn($sheet, "{$col}2:{$col}{$highestRow}", $align);
         }
+
+        // WithStyles expects an array return OR you can return []
+        return [];
     }
 
     public function columnFormats(): array
