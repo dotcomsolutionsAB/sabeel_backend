@@ -472,131 +472,239 @@ class MumineenController extends Controller
         ], 200);
     }
 
+    // public function syncPhotosFromRemote(Request $request)
+    // {
+    //     try {
+    //         $placeholder = 'https://api.kolkatajamaat.com/storage/uploads/its_images/placeholder.jpg';
+
+    //         // optional controls
+    //         $limit   = max(1, (int) $request->input('limit', 200));   // process N records per call
+    //         $offset  = max(0, (int) $request->input('offset', 0));
+    //         $dryRun  = (bool) $request->input('dry_run', false);      // if true: no download/update
+    //         $timeout = max(5, (int) $request->input('timeout', 15));  // seconds
+
+    //         // ensure folder exists
+    //         Storage::disk('public')->makeDirectory('uploads/its_images');
+
+    //         // fetch mumineen who still have placeholder
+    //         $q = MumineenModel::query()
+    //             ->select('id', 'its', 'pic')
+    //             ->where('pic', $placeholder)
+    //             ->whereNotNull('its')
+    //             ->where('its', '!=', '');
+
+    //         $totalCandidates = (clone $q)->count();
+
+    //         $rows = (clone $q)
+    //             ->orderBy('id', 'asc')
+    //             ->skip($offset)
+    //             ->take($limit)
+    //             ->get();
+
+    //         $processed = 0;
+    //         $downloaded = 0;
+    //         $notFound = 0;
+    //         $skipped = 0;
+    //         $failed = 0;
+    //         $failedRows = [];
+
+    //         foreach ($rows as $m) {
+    //             $processed++;
+
+    //             $its = trim((string) $m->its);
+    //             if ($its === '') {
+    //                 $skipped++;
+    //                 $failedRows[] = [
+    //                     'id'  => $m->id,
+    //                     'its' => $its,
+    //                     'reason' => 'ITS empty',
+    //                 ];
+    //                 continue;
+    //             }
+
+    //             // remote URL pattern you gave
+    //             $remoteUrl = "https://talabulilm.com/mumin_images/{$its}.png";
+
+    //             // local store path
+    //             $relativePath = "uploads/its_images/{$its}.png"; // storage/app/public/...
+    //             $publicUrl    = url("storage/{$relativePath}");
+
+    //             try {
+    //                 // If already downloaded earlier (file exists), just update DB (optional)
+    //                 if (Storage::disk('public')->exists($relativePath)) {
+    //                     if (!$dryRun) {
+    //                         MumineenModel::where('id', $m->id)->update(['pic' => $publicUrl]);
+    //                     }
+    //                     $downloaded++;
+    //                     continue;
+    //                 }
+
+    //                 // HEAD check (fast)
+    //                 $head = Http::timeout($timeout)->withoutVerifying()->head($remoteUrl);
+
+    //                 if ($head->successful()) {
+    //                     if ($dryRun) {
+    //                         $downloaded++;
+    //                         continue;
+    //                     }
+
+    //                     // GET the file
+    //                     $resp = Http::timeout($timeout)->withoutVerifying()->get($remoteUrl);
+
+    //                     if (!$resp->successful() || empty($resp->body())) {
+    //                         $failed++;
+    //                         $failedRows[] = [
+    //                             'id'  => $m->id,
+    //                             'its' => $its,
+    //                             'reason' => 'Remote GET failed or empty body',
+    //                             'remote_url' => $remoteUrl,
+    //                             'status' => $resp->status(),
+    //                         ];
+    //                         continue;
+    //                     }
+
+    //                     // store file
+    //                     Storage::disk('public')->put($relativePath, $resp->body());
+
+    //                     // update DB pic url
+    //                     MumineenModel::where('id', $m->id)->update(['pic' => $publicUrl]);
+
+    //                     $downloaded++;
+    //                 } else {
+    //                     $notFound++;
+    //                 }
+
+    //             } catch (\Throwable $ex) {
+    //                 $failed++;
+    //                 $failedRows[] = [
+    //                     'id'  => $m->id,
+    //                     'its' => $its,
+    //                     'reason' => $ex->getMessage(),
+    //                     'remote_url' => $remoteUrl,
+    //                 ];
+    //             }
+    //         }
+
+    //         return $this->success('Photo sync completed.', [
+    //             'total_candidates' => $totalCandidates,
+    //             'processed'        => $processed,
+    //             'downloaded'       => $downloaded,
+    //             'not_found'        => $notFound,
+    //             'skipped'          => $skipped,
+    //             'failed'           => $failed,
+    //             'failed_rows'      => $failedRows,
+    //             'next_offset'      => $offset + $limit,
+    //             'limit'            => $limit,
+    //             'dry_run'          => $dryRun,
+    //         ], 200);
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Mumineen photo sync failed');
+    //     }
+    // }
     public function syncPhotosFromRemote(Request $request)
     {
         try {
             $placeholder = 'https://api.kolkatajamaat.com/storage/uploads/its_images/placeholder.jpg';
 
-            // optional controls
-            $limit   = max(1, (int) $request->input('limit', 200));   // process N records per call
-            $offset  = max(0, (int) $request->input('offset', 0));
-            $dryRun  = (bool) $request->input('dry_run', false);      // if true: no download/update
-            $timeout = max(5, (int) $request->input('timeout', 15));  // seconds
+            $limit      = max(1, (int) $request->input('limit', 200));
+            $offset     = max(0, (int) $request->input('offset', 0));
+            $timeBudget = max(5, (int) $request->input('time_budget', 20)); // seconds
+            $timeout    = max(3, (int) $request->input('timeout', 8));      // per HTTP call
 
-            // ensure folder exists
+            $startedAt = microtime(true);
+
+            // prevent PHP max execution (still nginx can timeout)
+            @set_time_limit($timeBudget + 10);
+
             Storage::disk('public')->makeDirectory('uploads/its_images');
 
-            // fetch mumineen who still have placeholder
             $q = MumineenModel::query()
-                ->select('id', 'its', 'pic')
+                ->select('id','its','pic')
                 ->where('pic', $placeholder)
                 ->whereNotNull('its')
-                ->where('its', '!=', '');
+                ->where('its','!=','')
+                ->orderBy('id','asc');
 
             $totalCandidates = (clone $q)->count();
 
-            $rows = (clone $q)
-                ->orderBy('id', 'asc')
-                ->skip($offset)
-                ->take($limit)
-                ->get();
+            $rows = (clone $q)->skip($offset)->take($limit)->get();
 
-            $processed = 0;
-            $downloaded = 0;
-            $notFound = 0;
-            $skipped = 0;
-            $failed = 0;
+            $processed = $downloaded = $notFound = $failed = 0;
             $failedRows = [];
 
             foreach ($rows as $m) {
-                $processed++;
-
-                $its = trim((string) $m->its);
-                if ($its === '') {
-                    $skipped++;
-                    $failedRows[] = [
-                        'id'  => $m->id,
-                        'its' => $its,
-                        'reason' => 'ITS empty',
-                    ];
-                    continue;
+                // ✅ stop before nginx kills you
+                if ((microtime(true) - $startedAt) > $timeBudget) {
+                    break;
                 }
 
-                // remote URL pattern you gave
-                $remoteUrl = "https://talabulilm.com/mumin_images/{$its}.png";
+                $processed++;
+                $its = trim((string)$m->its);
 
-                // local store path
-                $relativePath = "uploads/its_images/{$its}.png"; // storage/app/public/...
-                $publicUrl    = url("storage/{$relativePath}");
+                $remoteUrl = "https://talabulilm.com/mumin_images/{$its}.png";
+                $relativePath = "uploads/its_images/{$its}.png";
+                $publicUrl = url("storage/{$relativePath}");
 
                 try {
-                    // If already downloaded earlier (file exists), just update DB (optional)
+                    // already exists locally
                     if (Storage::disk('public')->exists($relativePath)) {
-                        if (!$dryRun) {
-                            MumineenModel::where('id', $m->id)->update(['pic' => $publicUrl]);
-                        }
+                        MumineenModel::where('id',$m->id)->update(['pic'=>$publicUrl]);
                         $downloaded++;
                         continue;
                     }
 
-                    // HEAD check (fast)
-                    $head = Http::timeout($timeout)->withoutVerifying()->head($remoteUrl);
+                    // ✅ single GET (avoid HEAD; many servers block HEAD / slower overall)
+                    $resp = Http::timeout($timeout)
+                        ->retry(2, 200)         // 2 retries, 200ms
+                        ->withoutVerifying()
+                        ->get($remoteUrl);
 
-                    if ($head->successful()) {
-                        if ($dryRun) {
-                            $downloaded++;
-                            continue;
-                        }
-
-                        // GET the file
-                        $resp = Http::timeout($timeout)->withoutVerifying()->get($remoteUrl);
-
-                        if (!$resp->successful() || empty($resp->body())) {
-                            $failed++;
-                            $failedRows[] = [
-                                'id'  => $m->id,
-                                'its' => $its,
-                                'reason' => 'Remote GET failed or empty body',
-                                'remote_url' => $remoteUrl,
-                                'status' => $resp->status(),
-                            ];
-                            continue;
-                        }
-
-                        // store file
-                        Storage::disk('public')->put($relativePath, $resp->body());
-
-                        // update DB pic url
-                        MumineenModel::where('id', $m->id)->update(['pic' => $publicUrl]);
-
-                        $downloaded++;
-                    } else {
+                    if ($resp->status() === 404) {
                         $notFound++;
+                        continue;
                     }
+
+                    if (!$resp->successful() || empty($resp->body())) {
+                        $failed++;
+                        $failedRows[] = [
+                            'id' => $m->id,
+                            'its' => $its,
+                            'status' => $resp->status(),
+                            'reason' => 'Remote response not successful / empty body'
+                        ];
+                        continue;
+                    }
+
+                    Storage::disk('public')->put($relativePath, $resp->body());
+                    MumineenModel::where('id',$m->id)->update(['pic'=>$publicUrl]);
+                    $downloaded++;
 
                 } catch (\Throwable $ex) {
                     $failed++;
                     $failedRows[] = [
-                        'id'  => $m->id,
+                        'id' => $m->id,
                         'its' => $its,
                         'reason' => $ex->getMessage(),
-                        'remote_url' => $remoteUrl,
                     ];
                 }
             }
 
-            return $this->success('Photo sync completed.', [
+            $nextOffset = $offset + $processed;
+            $done = ($nextOffset >= $totalCandidates) || ($processed === 0);
+
+            return $this->success('Photo sync partial run completed.', [
                 'total_candidates' => $totalCandidates,
-                'processed'        => $processed,
-                'downloaded'       => $downloaded,
-                'not_found'        => $notFound,
-                'skipped'          => $skipped,
-                'failed'           => $failed,
-                'failed_rows'      => $failedRows,
-                'next_offset'      => $offset + $limit,
-                'limit'            => $limit,
-                'dry_run'          => $dryRun,
-            ], 200);
+                'offset' => $offset,
+                'processed' => $processed,
+                'downloaded' => $downloaded,
+                'not_found' => $notFound,
+                'failed' => $failed,
+                'failed_rows' => $failedRows,
+                'next_offset' => $done ? null : $nextOffset,
+                'done' => $done,
+                'time_budget' => $timeBudget,
+            ]);
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Mumineen photo sync failed');
