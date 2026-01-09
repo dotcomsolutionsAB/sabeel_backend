@@ -1,234 +1,218 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt - {{ $receiptNumber }}</title>
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin:0; padding:0; box-sizing:border-box; }
+
+        body{
+            font-family: Arial, Helvetica, sans-serif;
+            background:#fff;
+            padding: 6px;              /* ✅ A5 */
+            color:#111;
         }
 
-        body {
-            font-family: 'Times New Roman', Times, serif;
-            padding: 20px;
-            background-color: #fff;
+        .receipt-card{
+            border: 2px solid #111;
+            border-radius: 22px;
+            background: #fff;
+
+            margin: 6px;               /* ✅ A5 */
+            padding: 18px 18px 14px;   /* ✅ A5 */
         }
 
-        .receipt-container {
-            max-width: 210mm;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border: 2px solid #000;
+        table{ width:100%; border-collapse: collapse; }
+
+        .top td{
+            font-size: 13px;           /* ✅ A5 */
+            font-weight: 800;
+            padding-bottom: 10px;
+        }
+        .top .left{ text-align:left; }
+        .top .right{ text-align:right; }
+
+        .header td{
+            vertical-align: middle;
+            padding: 4px 0 6px;        /* ✅ a bit tighter */
         }
 
-        /* Top Section - Receipt Number and Date */
-        .top-section {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 12px;
+        .logo-cell{
+            width:30%;
+            text-align:left;
+            padding-right: 4px;        /* ✅ reduced gap */
         }
 
-        .receipt-number {
-            font-weight: bold;
+        .text-cell{
+            width:70%;
+            text-align:center;
+            padding-left: 0;
         }
 
-        .receipt-date {
-            font-weight: bold;
-        }
-
-        /* Header Section with Logo */
-        .header-section {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 15px;
-        }
-
-        .logo {
-            width: 80px;
+        .logo{
+            width: 78px;               /* ✅ A5 */
             height: auto;
-            margin-right: 20px;
-            flex-shrink: 0;
+            display:inline-block;
         }
 
-        .header-text {
-            flex: 1;
+        .org-title{
+            font-size: 18px;           /* ✅ A5 */
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 3px;
         }
-
-        .organization-name {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-            text-align: center;
+        .org-address{
+            font-size: 13px;           /* ✅ A5 */
+            font-weight: 700;
+            margin-bottom: 6px;
         }
-
-        .address {
-            font-size: 12px;
-            text-align: center;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-
-        .anjuman-name {
-            font-size: 14px;
-            font-weight: bold;
-            text-align: center;
+        .anjuman{
+            font-size: 16px;           /* ✅ A5 */
+            font-weight: 900;
+            text-transform: uppercase;
             text-decoration: underline;
-            margin-bottom: 20px;
+            text-underline-offset: 3px;
         }
 
-        /* Receipt Content Box */
-        .receipt-content {
-            padding: 20px 0;
-            margin-top: 20px;
+        .single td{
+            padding: 8px 0;
             font-size: 13px;
+            font-weight: 700;
         }
 
-        .receipt-row {
-            display: flex;
-            margin-bottom: 15px;
-            align-items: baseline;
+        .single.emph td{
+            font-size: 14px;           /* ✅ A5 */
+            font-weight: 900;
+            line-height: 1.35;
+            padding: 8px 0;            /* ✅ A5 */
         }
 
-        .receipt-row.split {
-            justify-content: space-between;
+        .k{
+            font-weight: 900;
+            white-space: nowrap;
+            padding-right: 10px;
+        }
+        .v{ font-weight: 700; }
+        .single.emph .v{ font-weight: 900; }
+
+        .split6 td{
+            padding: 8px 0;            /* ✅ A5 */
+            font-size: 13px;           /* ✅ A5 */
+            vertical-align: top;
         }
 
-        .field-label {
-            font-weight: bold;
-            margin-right: 10px;
-        }
+        .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
+        .split6 .s1{ width: 6%; }
+        .split6 .v1{ width: 26%; font-weight:700; }
 
-        .field-value {
-            flex: 1;
-            border-bottom: 1px solid #000;
-            min-height: 20px;
-            padding-bottom: 2px;
-        }
+        .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
+        .split6 .s2{ width: 6%; }
+        .split6 .v2{ width: 18%; font-weight:700; }
 
-        .half-width {
-            width: 48%;
-            display: flex;
-            align-items: baseline;
-        }
-
-        .half-width .field-value {
-            flex: 1;
-        }
-
-        .computer-generated {
-            text-align: center;
-            font-size: 11px;
-            margin-top: 20px;
+        .footer{
+            text-align:center;
             font-style: italic;
-            color: #333;
+            font-size: 12px;           /* ✅ A5 */
+            color:#333;
+            padding-top: 12px;
         }
 
-        @media print {
-            body {
-                padding: 0;
-            }
-            
-            .receipt-container {
-                padding: 10mm;
-            }
+        @media print{
+            body{ padding:0; }
         }
     </style>
+
 </head>
 <body>
-    <div class="receipt-container">
-        
-        <!-- Top Section: Receipt Number and Date -->
-        <div class="top-section">
-            <div class="receipt-number">{{ $receiptNumber }}</div>
-            <div class="receipt-date">{{ $date }}</div>
-        </div>
 
-        <!-- Header Section -->
-        <div class="header-section">
-            <img src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png" 
-                 alt="Logo" 
-                 class="logo"
-                 onerror="this.style.display='none'">
-            
-            <div class="header-text">
-                <div class="organization-name">
-                    Dawoodi Bohra Jamaat (Kolkata)
-                </div>
-                
-                <div class="address">
-                    16/F, Dr. Syedna Mohammed Burhanuddin Road
-                </div>
-                
-                <div class="anjuman-name">
-                    Anjuman-e-Ezzi Mohammedi
-                </div>
-            </div>
-        </div>
+<div class="receipt-card">
 
-        <!-- Receipt Content -->
-        <div class="receipt-content">
-            
-            <!-- Received From -->
-            <div class="receipt-row">
-                <span class="field-label">Received From:</span>
-                <span class="field-value">{{ $receivedFrom }}</span>
-            </div>
+    <table class="top">
+        <tr>
+            <td class="left">Receipt Number : <span class="v">{{ $receiptNumber }}</span></td>
+            <td class="right">Date : <span class="v">{{ $date }}</span></td>
+        </tr>
+    </table>
 
-            <!-- Amount -->
-            <div class="receipt-row">
-                <span class="field-label">Amount:</span>
-                <span class="field-value">{{ $amount }} ({{ $amountInWords }})</span>
-            </div>
+    <table class="header">
+        <tr>
+            <td class="logo-cell">
+                <img class="logo"
+                     src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png"
+                     alt="Logo"
+                     onerror="this.style.display='none'"/>
+            </td>
+            <td class="text-cell">
+                <div class="org-title">DAWOODI BOHRA JAMAAT TRUST (KOLKATA)</div>
+                <div class="org-address">16/F, Dr, Syedna Mohammed Burhanuddin Road</div>
+                <div class="anjuman">ANJUMAN - E - MOHAMMEDI</div>
+            </td>
+        </tr>
+    </table>
 
-            <!-- Payment Mode and Cheque/Transaction -->
-            <div class="receipt-row split">
-                <div class="half-width">
-                    <span class="field-label">Payment Mode:</span>
-                    <span class="field-value">{{ $paymentMode }}</span>
-                </div>
-                <div class="half-width">
-                    <span class="field-label">Cheque No/Transaction Id:</span>
-                    <span class="field-value">{{ $chequeNo }}</span>
-                </div>
-            </div>
+    <!-- ✅ Emphasized -->
+    <table class="single emph">
+        <tr>
+            <td>
+                <span class="k">Received From :</span>
+                <span class="v">{{ $receivedFrom }}</span>
+            </td>
+        </tr>
+    </table>
 
-            <!-- For the Year and Bank Name -->
-            <div class="receipt-row split">
-                <div class="half-width">
-                    <span class="field-label">For the Year:</span>
-                    <span class="field-value">{{ $year }}</span>
-                </div>
-                <div class="half-width">
-                    <span class="field-label">Bank Name:</span>
-                    <span class="field-value">{{ $bankName }}</span>
-                </div>
-            </div>
+    <!-- ✅ Emphasized -->
+    <table class="single emph">
+        <tr>
+            <td>
+                <span class="k">Amount :</span>
+                <span class="v">{{ $amount }} ( {{ $amountInWords }} )</span>
+            </td>
+        </tr>
+    </table>
 
-            <!-- Received By and Dated -->
-            <div class="receipt-row split">
-                <div class="half-width">
-                    <span class="field-label">Received By:</span>
-                    <span class="field-value">{{ $receivedBy }}</span>
-                </div>
-                <div class="half-width">
-                    <span class="field-label">Dated:</span>
-                    <span class="field-value">{{ $chequeDate }}</span>
-                </div>
-            </div>
+    <table class="split6">
+        <tr>
+            <td class="k1">Payment Mode :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $paymentMode }}</td>
 
-            <!-- Computer Generated Text -->
-            <div class="computer-generated">
-                This is a computer generated receipt and does not require any signature.
-            </div>
+            <td class="k2">Cheque No / Transaction Id :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $chequeNo }}</td>
+        </tr>
+    </table>
 
-        </div>
+    <table class="split6">
+        <tr>
+            <td class="k1">For the Year :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $year }}</td>
 
+            <td class="k2">Bank Name :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $bankName }}</td>
+        </tr>
+    </table>
+
+    <table class="split6">
+        <tr>
+            <td class="k1">Received By :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $receivedBy }}</td>
+
+            <td class="k2">Dated :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $chequeDate }}</td>
+        </tr>
+    </table>
+
+    <div class="footer">
+        This is a computer generated receipt and does not require any signature.
     </div>
+
+</div>
+
 </body>
 </html>

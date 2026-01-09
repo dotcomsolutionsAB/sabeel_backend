@@ -460,10 +460,19 @@ class ReceiptController extends Controller
             $html = view('receipt', $data)->render();
 
             // Initialize mPDF
+            // $mpdf = new Mpdf([
+            //     'mode' => 'utf-8',
+            //     'format' => 'A4',
+            //     'orientation' => 'P',
+            //     'margin_left' => 0,
+            //     'margin_right' => 0,
+            //     'margin_top' => 0,
+            //     'margin_bottom' => 0,
+            // ]);
             $mpdf = new Mpdf([
                 'mode' => 'utf-8',
-                'format' => 'A4',
-                'orientation' => 'P',
+                'format' => 'A5',      // ✅ A5 paper
+                'orientation' => 'P',  // ✅ Portrait
                 'margin_left' => 0,
                 'margin_right' => 0,
                 'margin_top' => 0,
