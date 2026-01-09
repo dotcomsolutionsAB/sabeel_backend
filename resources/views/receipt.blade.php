@@ -5,128 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt - {{ $receiptNumber }}</title>
 
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        
-        body{
-            font-family: Arial, Helvetica, sans-serif;
-            background:#fff;
-            padding: 6px;              /* ✅ A5 */
-            color:#111;
-        }
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
 
-        .receipt-card{
-            border: 2px solid #111;
-            border-radius: 22px;
-            background: #fff;
+    html, body { height: 100%; }
 
-            margin: 6px;               /* ✅ A5 */
-            padding: 18px 18px 14px;   /* ✅ A5 */
-        }
-        .receipt-card{
-    width: 100%;
-}
+    body{
+        font-family: Arial, Helvetica, sans-serif;
+        background:#fff;
+        color:#111;
+    }
 
+    /* ✅ Fill the printable area completely (inside mPDF margins) */
+    .receipt-card{
+        width: 100%;
+        height: 100%;
+        border: 2px solid #111;
+        border-radius: 22px;
+        background: #fff;
 
-        table{ width:100%; border-collapse: collapse; }
+        /* inner spacing inside the border (optional) */
+        padding: 16px 18px 14px;
+    }
 
-        .top td{
-            font-size: 13px;           /* ✅ A5 */
-            font-weight: 800;
-            padding-bottom: 10px;
-        }
-        .top .left{ text-align:left; }
-        .top .right{ text-align:right; }
+    table{ width:100%; border-collapse: collapse; }
 
-        .header td{
-            vertical-align: middle;
-            padding: 4px 0 6px;        /* ✅ a bit tighter */
-        }
+    .top td{
+        font-size: 13px;
+        font-weight: 800;
+        padding-bottom: 10px;
+    }
+    .top .left{ text-align:left; }
+    .top .right{ text-align:right; }
 
-        .logo-cell{
-            width:30%;
-            text-align:left;
-            padding-right: 4px;        /* ✅ reduced gap */
-        }
+    .header td{
+        vertical-align: middle;
+        padding: 4px 0 6px;
+    }
 
-        .text-cell{
-            width:70%;
-            text-align:center;
-            padding-left: 0;
-        }
+    .logo-cell{
+        width:30%;
+        text-align:left;
+        padding-right: 4px;
+    }
+    .text-cell{
+        width:70%;
+        text-align:center;
+    }
 
-        .logo{
-            width: 78px;               /* ✅ A5 */
-            height: auto;
-            display:inline-block;
-        }
+    .logo{
+        width: 78px;
+        height: auto;
+        display:inline-block;
+    }
 
-        .org-title{
-            font-size: 18px;           /* ✅ A5 */
-            font-weight: 900;
-            text-transform: uppercase;
-            margin-bottom: 3px;
-        }
-        .org-address{
-            font-size: 13px;           /* ✅ A5 */
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-        .anjuman{
-            font-size: 16px;           /* ✅ A5 */
-            font-weight: 900;
-            text-transform: uppercase;
-            text-decoration: underline;
-            text-underline-offset: 3px;
-        }
+    .org-title{
+        font-size: 18px;
+        font-weight: 900;
+        text-transform: uppercase;
+        margin-bottom: 3px;
+    }
+    .org-address{
+        font-size: 13px;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .anjuman{
+        font-size: 16px;
+        font-weight: 900;
+        text-transform: uppercase;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
 
-        .single td{
-            padding: 8px 0;
-            font-size: 13px;
-            font-weight: 700;
-        }
+    .single td{
+        padding: 8px 0;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    .single.emph td{
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1.35;
+        padding: 8px 0;
+    }
 
-        .single.emph td{
-            font-size: 14px;           /* ✅ A5 */
-            font-weight: 900;
-            line-height: 1.35;
-            padding: 8px 0;            /* ✅ A5 */
-        }
+    .k{ font-weight: 900; white-space: nowrap; padding-right: 10px; }
+    .v{ font-weight: 700; }
+    .single.emph .v{ font-weight: 900; }
 
-        .k{
-            font-weight: 900;
-            white-space: nowrap;
-            padding-right: 10px;
-        }
-        .v{ font-weight: 700; }
-        .single.emph .v{ font-weight: 900; }
+    .split6 td{
+        padding: 8px 0;
+        font-size: 13px;
+        vertical-align: top;
+    }
+    .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
+    .split6 .s1{ width: 6%; }
+    .split6 .v1{ width: 26%; font-weight:700; }
+    .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
+    .split6 .s2{ width: 6%; }
+    .split6 .v2{ width: 18%; font-weight:700; }
 
-        .split6 td{
-            padding: 8px 0;            /* ✅ A5 */
-            font-size: 13px;           /* ✅ A5 */
-            vertical-align: top;
-        }
+    /* ✅ Push footer to bottom if space remains */
+    .footer{
+        text-align:center;
+        font-style: italic;
+        font-size: 12px;
+        color:#333;
+        padding-top: 10px;
+    }
+</style>
 
-        .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
-        .split6 .s1{ width: 6%; }
-        .split6 .v1{ width: 26%; font-weight:700; }
-
-        .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
-        .split6 .s2{ width: 6%; }
-        .split6 .v2{ width: 18%; font-weight:700; }
-
-        .footer{
-            text-align:center;
-            font-style: italic;
-            font-size: 12px;           /* ✅ A5 */
-            color:#333;
-            padding-top: 12px;
-        }
-
-        @media print{
-            body{ padding:0; }
-        }
-    </style>
 
 </head>
 <body>

@@ -469,15 +469,15 @@ class ReceiptController extends Controller
             //     'margin_top' => 0,
             //     'margin_bottom' => 0,
             // ]);
-            $mpdf = new \Mpdf\Mpdf([
+$mpdf = new \Mpdf\Mpdf([
     'mode' => 'utf-8',
-    'format' => 'A5',
-    'orientation' => 'L',   // ✅ Landscape => 210 × 148 mm
-    'margin_left' => 0,
-    'margin_right' => 0,
-    'margin_top' => 0,
-    'margin_bottom' => 0,
+    'format' => [210, 148],  // A5 Landscape (width, height)
+    'margin_left' => 6.5,    // ~25px
+    'margin_right' => 6.5,   // ~25px
+    'margin_top' => 5,       // ~20px
+    'margin_bottom' => 5,    // ~20px
 ]);
+
 
 
             // Write HTML to PDF
