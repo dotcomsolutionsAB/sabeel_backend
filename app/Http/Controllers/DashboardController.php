@@ -260,6 +260,10 @@ class DashboardController extends Controller
                     $paid   = (float) ($paidMap[$m->family_id] ?? 0);
                     $due    = max(0, $sabeel - $paid);
 
+                    $totalSabeel += $sabeel;
+                    $totalPaid   += $paid;
+                    $totalDue    += $due;
+
                     $excelRows[] = [
                         $sn++,
                         $m->its,
@@ -369,6 +373,10 @@ class DashboardController extends Controller
                 $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
                 $paid   = (float) ($paidMap[$e->establishment_id] ?? 0);
                 $due    = max(0, $sabeel - $paid);
+
+                $totalSabeel += $sabeel;
+                $totalPaid   += $paid;
+                $totalDue    += $due;
 
                 $excelRows[] = [
                     $sn++,
