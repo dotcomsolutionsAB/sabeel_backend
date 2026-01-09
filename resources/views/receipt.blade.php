@@ -7,6 +7,10 @@
 
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
+        @page {
+            size: A5 portrait;
+            margin: 0;
+        }
 
         body{
             font-family: Arial, Helvetica, sans-serif;
