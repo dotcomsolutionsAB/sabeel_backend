@@ -2,40 +2,28 @@
 
 namespace App\Exports;
 
-use App\Exports\Traits\CommonExcelStyle;
-use Maatwebsite\Excel\Concerns\{
-    FromArray,
-    WithHeadings,
-    WithStyles,
-    WithColumnFormatting
-};
+use Illuminate\Support\Collection;
+use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 
-class GenericExcelExport implements
-    FromArray,
-    WithHeadings,
-    WithStyles
+class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEvents, ShouldAutoSize
 {
-    use CommonExcelStyle;
-
     protected array $rows;
     protected array $headings;
     protected array $alignments;
 
-    public function __construct(
-        array $rows,
-        array $headings,
-        array $alignments = []
-    ) {
-        $this->rows          = $rows;
-        $this->headings      = array_values($headings); // 🔑 force reindex
-        $this->alignments    = $alignments;
-    }
-
-    public function headings(): array
+    public function __construct(array $rows, array $headings, array $alignments = [])
     {
-        return $this->headings;
+        $this->rows = $rows;
+        $this->headings = $headings;
+        $this->alignments = $alignments;
     }
 
     public function array(): array
@@ -43,28 +31,63 @@ class GenericExcelExport implements
         return $this->rows;
     }
 
-    public function styles(Worksheet $sheet)
+    public function headings(): array
     {
-        $this->applyCommonStyles($sheet);
-
-        $highestRow = $sheet->getHighestRow();
-
-        // ✅ Alignment (same as you already do)
-        foreach ($this->alignments as $col => $align) {
-            $this->alignColumn($sheet, "{$col}2:{$col}{$highestRow}", $align);
-        }
-
-        // ✅ Number format ONLY for data rows (NOT header)
-        // Example: if your amount/sabeel is in column G:
-        $sheet->getStyle("G2:G{$highestRow}")
-            ->getNumberFormat()
-            ->setFormatCode('_₹* #,##0.00_ ;_₹* (#,##0.00);_₹* "-"??_ ;_@_ ');
-
-        return [];
+        return $this->headings;
     }
 
-    public function columnFormats(): array
+    // ✅ Heading bold + centered
+    public function styles(Worksheet $sheet)
     {
-        return $this->columnFormats;
+        return [
+            1 => [
+                'font' => ['bold' => true],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical'   => Alignment::VERTICAL_CENTER,
+                ],
+            ],
+        ];
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function (AfterSheet $event) {
+
+                $sheet = $event->sheet->getDelegate();
+
+                $highestRow = $sheet->getHighestRow();
+                $highestCol = $sheet->getHighestColumn();
+                $range      = "A1:{$highestCol}{$highestRow}";
+
+                // ✅ Auto wrap text (like long name/address)
+                $sheet->getStyle($range)->getAlignment()->setWrapText(true);
+
+                // ✅ Borders
+                $sheet->getStyle($range)->applyFromArray([
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => Border::BORDER_THIN,
+                        ],
+                    ],
+                ]);
+
+                // ✅ Apply column alignments (your passed map)
+                foreach ($this->alignments as $col => $align) {
+                    $sheet->getStyle("{$col}2:{$col}{$highestRow}")
+                        ->getAlignment()
+                        ->setHorizontal($align);
+                }
+
+                // ✅ Make last row (TOTAL) bold
+                $sheet->getStyle("A{$highestRow}:{$highestCol}{$highestRow}")
+                    ->getFont()
+                    ->setBold(true);
+
+                // ✅ Optional: freeze header row
+                $sheet->freezePane('A2');
+            }
+        ];
     }
 }
