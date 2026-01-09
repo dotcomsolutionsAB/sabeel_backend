@@ -469,9 +469,10 @@ class ReceiptController extends Controller
             //     'margin_top' => 0,
             //     'margin_bottom' => 0,
             // ]);
-            $mpdf = new Mpdf([
+            $mpdf = new \Mpdf\Mpdf([
     'mode' => 'utf-8',
-    'format' => [148, 210], // ✅ A5 exact size
+    'format' => 'A5',
+    'orientation' => 'L',   // ✅ Landscape => 210 × 148 mm
     'margin_left' => 0,
     'margin_right' => 0,
     'margin_top' => 0,

@@ -7,11 +7,7 @@
 
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        @page {
-            size: A5 portrait;
-            margin: 0;
-        }
-
+        
         body{
             font-family: Arial, Helvetica, sans-serif;
             background:#fff;
@@ -27,6 +23,10 @@
             margin: 6px;               /* ✅ A5 */
             padding: 18px 18px 14px;   /* ✅ A5 */
         }
+        .receipt-card{
+    width: 100%;
+}
+
 
         table{ width:100%; border-collapse: collapse; }
 
