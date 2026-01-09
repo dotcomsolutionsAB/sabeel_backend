@@ -251,6 +251,10 @@ class DashboardController extends Controller
                 $excelRows = [];
                 $sn = 1;
 
+                $totalSabeel = 0;
+                $totalPaid   = 0;
+                $totalDue    = 0;
+
                 foreach ($rows as $m) {
                     $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
                     $paid   = (float) ($paidMap[$m->family_id] ?? 0);
@@ -356,6 +360,10 @@ class DashboardController extends Controller
 
             $excelRows = [];
             $sn = 1;
+
+            $totalSabeel = 0;
+            $totalPaid   = 0;
+            $totalDue    = 0;
 
             foreach ($rows as $e) {
                 $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
