@@ -4,131 +4,145 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt - {{ $receiptNumber }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { height: 100%; }
 
-<style>
-    * { margin:0; padding:0; box-sizing:border-box; }
+        body{
+            font-family:"Montserrat", sans-serif;
+            background:#fff;
+            color:#111;
+        }
 
-    html, body { height: 100%; }
+        /* Fill printable area (inside mPDF margins) */
+        .receipt-card{
+            width: 100%;
+            height: 100%;
+            border: 2px solid #111;
+            border-radius: 22px;
+            background: #fff;
+            padding: 18px 18px 14px;
+        }
 
-    body{
-        font-family: Arial, Helvetica, sans-serif;
-        background:#fff;
-        color:#111;
-    }
+        table{ width:100%; border-collapse: collapse; }
 
-    /* ✅ Fill the printable area completely (inside mPDF margins) */
-    .receipt-card{
-        width: 100%;
-        height: 100%;
-        border: 2px solid #111;
-        border-radius: 22px;
-        background: #fff;
+        /* Top row */
+        .top td{
+            font-size: 13px;
+            font-weight: 800;
+            padding-bottom: 10px;
+        }
+        .top .left{ text-align:left; }
+        .top .right{ text-align:right; }
 
-        /* inner spacing inside the border (optional) */
-        padding: 16px 18px 14px;
-    }
+        /* Header row */
+        .header td{
+            vertical-align: middle;
+            padding: 4px 0 6px;
+        }
+        .logo-cell{
+            width:30%;
+            text-align:center;
+            padding-right: 4px;
+            height:100%;
+        }
+        .text-cell{
+            width:70%;
+            text-align:center;
+        }
+        .logo{
+            width: 100px;
+            height: auto;
+            display:inline-block;
+        }
 
-    table{ width:100%; border-collapse: collapse; }
+        .org-title{
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+        .org-address{
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .anjuman{
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
 
-    .top td{
-        font-size: 13px;
-        font-weight: 800;
-        padding-bottom: 10px;
-    }
-    .top .left{ text-align:left; }
-    .top .right{ text-align:right; }
+        /* Received From + Amount aligned */
+        .single td{
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .single.emph td{
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.35;
+            padding: 8px 0;
+        }
+        .label-col{
+            width: 190px;
+            white-space: nowrap;
+            font-weight: 900;
+            font-size:18px;
+        }
+        .value-col{
+            font-weight: 600;
+            font-size:18px;
+        }
 
-    .header td{
-        vertical-align: middle;
-        padding: 4px 0 6px;
-    }
+        /* Split rows */
+        .split6 td{
+            padding: 8px 0;
+            font-size: 13px;
+            vertical-align: top;
+        }
 
-    .logo-cell{
-        width:30%;
-        text-align:left;
-        padding-right: 4px;
-    }
-    .text-cell{
-        width:70%;
-        text-align:center;
-    }
+        .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
+        .split6 .s1{ width: 6%; }
+        .split6 .v1{ width: 26%; font-weight:700; }
 
-    .logo{
-        width: 78px;
-        height: auto;
-        display:inline-block;
-    }
+        .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
+        .split6 .s2{ width: 6%; }
+        .split6 .v2{ width: 18%; font-weight:700; }
 
-    .org-title{
-        font-size: 18px;
-        font-weight: 900;
-        text-transform: uppercase;
-        margin-bottom: 3px;
-    }
-    .org-address{
-        font-size: 13px;
-        font-weight: 700;
-        margin-bottom: 6px;
-    }
-    .anjuman{
-        font-size: 16px;
-        font-weight: 900;
-        text-transform: uppercase;
-        text-decoration: underline;
-        text-underline-offset: 3px;
-    }
+        /* ✅ Footer like image (NOT bottom-sticky) */
+        .footer{
+            text-align:center;
+            font-style: italic;
+            font-size: 12px;
+            color:#333;
+            margin-top: 16px;   /* ✅ space above like image */
+        }
 
-    .single td{
-        padding: 8px 0;
-        font-size: 13px;
-        font-weight: 700;
-    }
-    .single.emph td{
-        font-size: 14px;
-        font-weight: 900;
-        line-height: 1.35;
-        padding: 8px 0;
-    }
-
-    .k{ font-weight: 900; white-space: nowrap; padding-right: 10px; }
-    .v{ font-weight: 700; }
-    .single.emph .v{ font-weight: 900; }
-
-    .split6 td{
-        padding: 8px 0;
-        font-size: 13px;
-        vertical-align: top;
-    }
-    .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
-    .split6 .s1{ width: 6%; }
-    .split6 .v1{ width: 26%; font-weight:700; }
-    .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
-    .split6 .s2{ width: 6%; }
-    .split6 .v2{ width: 18%; font-weight:700; }
-
-    /* ✅ Push footer to bottom if space remains */
-    .footer{
-        text-align:center;
-        font-style: italic;
-        font-size: 12px;
-        color:#333;
-        padding-top: 10px;
-    }
-</style>
-
-
+        @media print{
+            body{ padding:0; }
+        }
+    </style>
 </head>
 <body>
 
 <div class="receipt-card">
 
+    <!-- Receipt No + Date -->
     <table class="top">
         <tr>
-            <td class="left">Receipt Number : <span class="v">{{ $receiptNumber }}</span></td>
-            <td class="right">Date : <span class="v">{{ $date }}</span></td>
+            <td class="left">Receipt Number : <span style="font-weight:800;">{{ $receiptNumber }}</span></td>
+            <td class="right">Date : <span style="font-weight:800;">{{ $date }}</span></td>
         </tr>
     </table>
 
+    <!-- Header -->
     <table class="header">
         <tr>
             <td class="logo-cell">
@@ -145,26 +159,23 @@
         </tr>
     </table>
 
-    <!-- ✅ Emphasized -->
+    <!-- Received From -->
     <table class="single emph">
         <tr>
-            <td>
-                <span class="k">Received From :</span>
-                <span class="v">{{ $receivedFrom }}</span>
-            </td>
+            <td class="label-col">Received From :</td>
+            <td class="value-col">{{ $receivedFrom }}</td>
         </tr>
     </table>
 
-    <!-- ✅ Emphasized -->
+    <!-- Amount -->
     <table class="single emph">
         <tr>
-            <td>
-                <span class="k">Amount :</span>
-                <span class="v">{{ $amount }} ( {{ $amountInWords }} )</span>
-            </td>
+            <td class="label-col">Amount :</td>
+            <td class="value-col">{{ $amount }} ( {{ $amountInWords }} )</td>
         </tr>
     </table>
 
+    <!-- Payment Mode + Cheque/Txn -->
     <table class="split6">
         <tr>
             <td class="k1">Payment Mode :</td>
@@ -177,6 +188,7 @@
         </tr>
     </table>
 
+    <!-- Year + Bank -->
     <table class="split6">
         <tr>
             <td class="k1">For the Year :</td>
@@ -189,6 +201,7 @@
         </tr>
     </table>
 
+    <!-- Received By + Dated -->
     <table class="split6">
         <tr>
             <td class="k1">Received By :</td>
@@ -201,6 +214,7 @@
         </tr>
     </table>
 
+    <!-- ✅ Footer positioned like screenshot -->
     <div class="footer">
         This is a computer generated receipt and does not require any signature.
     </div>
