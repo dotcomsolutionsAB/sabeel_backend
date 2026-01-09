@@ -269,6 +269,15 @@ class DashboardController extends Controller
                     ];
                 }
 
+                // ✅ Add TOTAL row at bottom
+                $excelRows[] = [
+                    '', '', '', '', '',
+                    'TOTAL',               // left box before Sabeel/Paid/Due
+                    $totalSabeel,
+                    $totalPaid,
+                    $totalDue,
+                ];
+
                 $export = new GenericExcelExport(
                     $excelRows,
                     ['SN','ITS','Name','Mobile','Email','Sector','Sabeel','Paid','Due'],
@@ -367,6 +376,15 @@ class DashboardController extends Controller
                     $due,
                 ];
             }
+
+            // ✅ Add TOTAL row at bottom
+            $excelRows[] = [
+                '', '', '', '', '',
+                'TOTAL',               // left box before Sabeel/Paid/Due
+                $totalSabeel,
+                $totalPaid,
+                $totalDue,
+            ];
 
             $export = new GenericExcelExport(
                 $excelRows,
