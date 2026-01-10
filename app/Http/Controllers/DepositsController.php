@@ -321,7 +321,7 @@ class DepositsController extends Controller
             $depositDate = $deposit->date ? date('d-m-Y', strtotime($deposit->date)) : '';
 
             // Render HTML
-            $html = view('deposit_pdf', [
+            $html = view('deposit', [
                 'deposit'      => $deposit,
                 'deposit_date' => $depositDate,
                 'rows'         => $rows,
@@ -367,7 +367,7 @@ class DepositsController extends Controller
             return $this->serverError($e, 'Deposit PDF generation failed');
         }
     }
-    
+
     // helper
     /**
      * Generate a unique 10-digit deposit_id.
