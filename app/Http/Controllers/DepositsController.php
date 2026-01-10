@@ -9,6 +9,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Mpdf\Mpdf;
 
 class DepositsController extends Controller
 {
