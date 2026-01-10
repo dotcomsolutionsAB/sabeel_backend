@@ -284,14 +284,18 @@ class DepositsController extends Controller
             $deposit = DepositsModel::find($id);
             if (!$deposit) return $this->error('Deposit not found.', 404);
 
-            $receiptIds = array_values(array_filter(array_map('trim', explode(',', (string)$deposit->receipt_ids))));
-            $receiptIds = array_map('intval', $receiptIds);
+            // receipt_ids: "1, 2,3,,"
+            $receiptIds = array_filter(array_map(function ($v) {
+                $v = trim((string)$v);
+                return ctype_digit($v) ? (int)$v : null;
+            }, explode(',', (string)$deposit->receipt_ids)));
+
+            $receiptIds = array_values($receiptIds);
 
             if (count($receiptIds) === 0) {
                 return $this->error('No receipt_ids found for this deposit.', 422);
             }
 
-            // Fetch receipts (keep same order as receipt_ids)
             $receipts = ReceiptModel::whereIn('id', $receiptIds)
                 ->get(['id','receipt_no','date','name','amount','mode'])
                 ->keyBy('id');
@@ -319,9 +323,10 @@ class DepositsController extends Controller
                 return $this->error('Receipts not found for provided receipt_ids.', 422);
             }
 
-            $depositDate = $deposit->date ? date('d-m-Y', strtotime($deposit->date)) : '';
+            // ✅ safe date formatting
+            $depositDate = $deposit->date ? Carbon::parse($deposit->date)->format('d-m-Y') : '';
 
-            // Render HTML
+            // ✅ render blade (resources/views/deposit.blade.php)
             $html = view('deposit', [
                 'deposit'      => $deposit,
                 'deposit_date' => $depositDate,
@@ -329,7 +334,7 @@ class DepositsController extends Controller
                 'total_amount' => 'Rs. ' . number_format($total, 2),
             ])->render();
 
-            // mPDF (A4 Portrait) - if you want A5 landscape tell me
+            // ✅ mPDF init
             $mpdf = new Mpdf([
                 'mode' => 'utf-8',
                 'format' => 'A4',
@@ -342,7 +347,7 @@ class DepositsController extends Controller
 
             $mpdf->WriteHTML($html);
 
-            // Save PDF
+            // ✅ save
             $directory = 'uploads/deposit/print';
             if (!Storage::disk('public')->exists($directory)) {
                 Storage::disk('public')->makeDirectory($directory, 0755, true);
@@ -353,19 +358,24 @@ class DepositsController extends Controller
 
             Storage::disk('public')->put($path, $mpdf->Output('', 'S'));
 
-            $fullUrl = asset('storage/' . $path);
-
             return $this->success('Deposit PDF generated successfully.', [
-                'deposit_id'   => $deposit->id,
-                'deposit_no'   => $deposit->deposit_id,
-                'pdf_url'      => $fullUrl,
-                'pdf_path'     => $path,
-                'receipt_count'=> count($rows),
-                'total'        => 'Rs. ' . number_format($total, 2),
+                'deposit_id'    => $deposit->id,
+                'deposit_no'    => $deposit->deposit_id,
+                'receipt_count' => count($rows),
+                'total'         => 'Rs. ' . number_format($total, 2),
+                'pdf_url'       => asset('storage/' . $path),
+                'pdf_path'      => $path,
             ]);
 
         } catch (\Throwable $e) {
-            return $this->serverError($e, 'Deposit PDF generation failed');
+            // TEMP: show real error (remove after fixed)
+            return response()->json([
+                "code" => 500,
+                "status" => "error",
+                "message" => $e->getMessage(),
+                "file" => $e->getFile(),
+                "line" => $e->getLine(),
+            ], 500);
         }
     }
 
