@@ -277,6 +277,97 @@ class DepositsController extends Controller
         }
     }
 
+    public function generateDepositPdf($id)
+    {
+        try {
+            $deposit = DepositsModel::find($id);
+            if (!$deposit) return $this->error('Deposit not found.', 404);
+
+            $receiptIds = array_values(array_filter(array_map('trim', explode(',', (string)$deposit->receipt_ids))));
+            $receiptIds = array_map('intval', $receiptIds);
+
+            if (count($receiptIds) === 0) {
+                return $this->error('No receipt_ids found for this deposit.', 422);
+            }
+
+            // Fetch receipts (keep same order as receipt_ids)
+            $receipts = ReceiptModel::whereIn('id', $receiptIds)
+                ->get(['id','receipt_no','date','name','amount','mode'])
+                ->keyBy('id');
+
+            $rows = [];
+            $total = 0;
+
+            foreach ($receiptIds as $rid) {
+                $r = $receipts->get($rid);
+                if (!$r) continue;
+
+                $amt = (float) $r->amount;
+                $total += $amt;
+
+                $rows[] = [
+                    'receipt_no' => (string) $r->receipt_no,
+                    'date'       => $r->date ? $r->date->format('d-m-Y') : '',
+                    'name'       => (string) $r->name,
+                    'amount'     => 'Rs. ' . number_format($amt, 2),
+                    'mode'       => ucfirst((string) $r->mode),
+                ];
+            }
+
+            if (count($rows) === 0) {
+                return $this->error('Receipts not found for provided receipt_ids.', 422);
+            }
+
+            $depositDate = $deposit->date ? date('d-m-Y', strtotime($deposit->date)) : '';
+
+            // Render HTML
+            $html = view('deposit_pdf', [
+                'deposit'      => $deposit,
+                'deposit_date' => $depositDate,
+                'rows'         => $rows,
+                'total_amount' => 'Rs. ' . number_format($total, 2),
+            ])->render();
+
+            // mPDF (A4 Portrait) - if you want A5 landscape tell me
+            $mpdf = new Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 10,
+                'margin_bottom' => 10,
+            ]);
+
+            $mpdf->WriteHTML($html);
+
+            // Save PDF
+            $directory = 'uploads/deposit/print';
+            if (!Storage::disk('public')->exists($directory)) {
+                Storage::disk('public')->makeDirectory($directory, 0755, true);
+            }
+
+            $filename = 'deposit_' . $deposit->deposit_id . '_' . time() . '.pdf';
+            $path = $directory . '/' . $filename;
+
+            Storage::disk('public')->put($path, $mpdf->Output('', 'S'));
+
+            $fullUrl = asset('storage/' . $path);
+
+            return $this->success('Deposit PDF generated successfully.', [
+                'deposit_id'   => $deposit->id,
+                'deposit_no'   => $deposit->deposit_id,
+                'pdf_url'      => $fullUrl,
+                'pdf_path'     => $path,
+                'receipt_count'=> count($rows),
+                'total'        => 'Rs. ' . number_format($total, 2),
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Deposit PDF generation failed');
+        }
+    }
+    
     // helper
     /**
      * Generate a unique 10-digit deposit_id.
