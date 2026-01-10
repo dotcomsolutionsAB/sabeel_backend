@@ -331,6 +331,7 @@ class DepositsController extends Controller
             $html = view('deposit', [
                 'deposit'      => $deposit,
                 'deposit_date' => $depositDate,
+                'remarks'      => (string) ($deposit->remarks ?? ''),   // ✅ add this line
                 'rows'         => $rows,
                 'total_amount' => 'Rs. ' . number_format($total, 2),
             ])->render();

@@ -70,6 +70,15 @@
             <td class="left">Deposit ID : {{ $deposit->deposit_id }}</td>
             <td class="right">Date : {{ $deposit_date }}</td>
         </tr>
+        <tr>
+            <td class="left">
+                @if(!empty($remarks))
+                    <div style="margin-top:4px; font-weight:400;">
+                        Remarks : {{ $remarks }}
+                    </div>
+                @endif
+            </td>
+        </tr>
     </table>
 
     <table class="report">
