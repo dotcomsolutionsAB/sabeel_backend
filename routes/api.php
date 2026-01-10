@@ -114,7 +114,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{id}', [DepositsController::class, 'edit']);
         Route::delete('/delete/{id}', [DepositsController::class, 'delete']);
         Route::post('/export', [DepositsController::class, 'export']);
-        Route::get('/deposits/{id}/pdf', [ReceiptController::class, 'generateDepositPdf']);
+        Route::get('/deposits/{id}/pdf', [DepositsController::class, 'generateDepositPdf']);
     });
 
     
