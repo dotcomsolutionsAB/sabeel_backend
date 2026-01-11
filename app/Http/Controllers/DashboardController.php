@@ -17,6 +17,7 @@ use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\ReceiptModel;
+use App\Models\YearModel;
 use Illuminate\Database\Eloquent\Builder;
 
 class DashboardController extends Controller
@@ -24,14 +25,31 @@ class DashboardController extends Controller
     //
     use ApiResponse;
 
+    /**
+     * Get current year from database
+     */
+    private function getCurrentYear(): string
+    {
+        $currentYear = YearModel::where('is_current', 1)->value('year');
+        if (!$currentYear) {
+            $currentYear = YearModel::orderBy('year', 'desc')->value('year');
+        }
+        return $currentYear ?: (string) date('Y');
+    }
+
     public function retrieve()
     {
         try {
-            $currentYear = now()->year;
+            $currentYearStr = $this->getCurrentYear();
 
             /* ================= MUMINEEN ================= */
 
-            $totalHouses = MumineenModel::distinct('family_id')->count('family_id');
+            $totalHouses = MumineenModel::where('status', 'active')->distinct('family_id')->count('family_id');
+            
+            $externalHouses = MumineenModel::where('status', 'active')
+                ->where('external', true)
+                ->distinct('family_id')
+                ->count('family_id');
 
             $totalMumineenSabeel = MumineenSabeelModel::sum('sabeel');
 
@@ -70,10 +88,10 @@ class DashboardController extends Controller
                 ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
                 ->count();
 
-            $newTakhmeenPending = MumineenModel::whereNotIn('family_id', function ($q) use ($currentYear) {
+            $newTakhmeenPending = MumineenModel::whereNotIn('family_id', function ($q) use ($currentYearStr) {
                     $q->select('family_id')
                       ->from('t_mumineen_sabeel')
-                      ->where('year', $currentYear);
+                      ->where('year', $currentYearStr);
                 })->count();
 
             $establishmentMissing = MumineenModel::whereNotIn('family_id', function ($q) {
@@ -117,6 +135,7 @@ class DashboardController extends Controller
             return $this->success('Dashboard data fetched', [
                 'mumineen' => [
                     'total_houses'         => (string) $totalHouses,
+                    'external_houses'      => (string) $externalHouses,
                     'total_sabeel'         => (string) $totalMumineenSabeel,
                     'due_houses'           => (string) $dueHouses,
                     'due_sabeel'           => (string) $dueMumineenSabeel,
@@ -192,7 +211,7 @@ class DashboardController extends Controller
     public function exportEstablishment(Request $request)
     {
         try {
-            $currentYear = now()->year;
+            $currentYearStr = $this->getCurrentYear();
 
             $filter = trim((string) $request->input('filter', ''));
 
@@ -213,13 +232,13 @@ class DashboardController extends Controller
 
                 // If due_family -> only those having due (paid < sabeel)
                 if ($filter === 'due_family') {
-                    $q->whereIn('family_id', function ($sub) use ($currentYear) {
+                    $q->whereIn('family_id', function ($sub) use ($currentYearStr) {
                         $sub->from('t_mumineen_sabeel as s')
                             ->leftJoin('t_receipts as r', function ($j) {
                                 $j->on('s.family_id', '=', 'r.family_id')
                                 ->where('r.status', 'active');
                             })
-                            ->where('s.year', $currentYear)
+                            ->where('s.year', $currentYearStr)
                             ->select('s.family_id')
                             ->groupBy('s.family_id')
                             ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
@@ -237,7 +256,7 @@ class DashboardController extends Controller
 
                 $sabeelMap = DB::table('t_mumineen_sabeel')
                     ->whereIn('family_id', $familyIds)
-                    ->where('year', $currentYear)
+                    ->where('year', $currentYearStr)
                     ->pluck('sabeel', 'family_id');
 
                 // paid map (active receipts)
@@ -313,13 +332,13 @@ class DashboardController extends Controller
 
             // due_establishment -> only those having due (paid < sabeel)
             if ($filter === 'due_establishment') {
-                $q->whereIn('establishment_id', function ($sub) use ($currentYear) {
+                $q->whereIn('establishment_id', function ($sub) use ($currentYearStr) {
                     $sub->from('t_establishment_sabeel as s')
                         ->leftJoin('t_receipts as r', function ($j) {
                             $j->on('s.establishment_id', '=', 'r.establishment_id')
                             ->where('r.status', 'active');
                         })
-                        ->where('s.year', $currentYear)
+                        ->where('s.year', $currentYearStr)
                         ->select('s.establishment_id')
                         ->groupBy('s.establishment_id')
                         ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
@@ -336,7 +355,7 @@ class DashboardController extends Controller
             $estIds = $rows->pluck('establishment_id')->all();
 
             $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
-                ->where('year', $currentYear)
+                ->where('year', $currentYearStr)
                 ->pluck('sabeel', 'establishment_id');
 
             // paid map for establishments
