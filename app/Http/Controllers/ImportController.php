@@ -383,6 +383,24 @@ class ImportController extends Controller
     }
 
     /**
+     * Extract sector value (first value before comma)
+     */
+    private function extractSector(?string $sector): ?string
+    {
+        if ($sector === null || $sector === '') {
+            return null;
+        }
+        
+        $sector = trim($sector);
+        $commaPos = strpos($sector, ',');
+        if ($commaPos !== false) {
+            return trim(substr($sector, 0, $commaPos));
+        }
+        
+        return $sector;
+    }
+
+    /**
      * Analyze changes (dry run)
      */
     private function analyzeChanges(array $families, array $columnMap): array
@@ -442,6 +460,7 @@ class ImportController extends Controller
                     }
                     
                     $sector = $this->getValue($hofRow, $columnMap, 'sector');
+                    $sector = $this->extractSector($sector);
                     if ($sector && $sector !== $existingHof->sector) {
                         $updates['sector'] = $sector;
                     }
@@ -697,6 +716,7 @@ class ImportController extends Controller
         }
 
         $sector = $this->getValue($hofRow, $columnMap, 'sector');
+        $sector = $this->extractSector($sector);
         if ($sector !== null) {
             $updates['sector'] = $sector;
         }
@@ -768,6 +788,7 @@ class ImportController extends Controller
         $name = $this->getValue($hofRow, $columnMap, 'full_name') ?? '';
         $its = $this->getValue($hofRow, $columnMap, 'its_id') ?? '';
         $sector = $this->getValue($hofRow, $columnMap, 'sector');
+        $sector = $this->extractSector($sector);
         $subSector = $this->getValue($hofRow, $columnMap, 'sub_sector');
         $mobile = $this->getValue($hofRow, $columnMap, 'mobile');
         $email = $this->getValue($hofRow, $columnMap, 'email');
@@ -910,6 +931,7 @@ class ImportController extends Controller
         }
         
         $sector = $this->getValue($memberRow, $columnMap, 'sector');
+        $sector = $this->extractSector($sector);
         $subSector = $this->getValue($memberRow, $columnMap, 'sub_sector');
         $mobile = $this->getValue($memberRow, $columnMap, 'mobile');
         $email = $this->getValue($memberRow, $columnMap, 'email');
