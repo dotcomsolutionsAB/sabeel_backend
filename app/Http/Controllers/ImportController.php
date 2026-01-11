@@ -801,9 +801,18 @@ class ImportController extends Controller
         // Add new FMs
         foreach ($excelFms as $its => $memberRow) {
             if (!isset($existingFms[$its])) {
-                $this->createFamilyMember($memberRow, $columnMap, $familyId);
-                $result['fm_added']++;
-                $result['fm_synced']++;
+                try {
+                    $this->createFamilyMember($memberRow, $columnMap, $familyId);
+                    $result['fm_added']++;
+                    $result['fm_synced']++;
+                } catch (\Exception $e) {
+                    // Log error if FM creation fails (e.g., duplicate ITS constraint)
+                    $result['errors'][] = [
+                        'family_id' => $familyId,
+                        'its' => $its,
+                        'message' => 'Failed to create FM: ' . $e->getMessage(),
+                    ];
+                }
             } else {
                 // Update existing FM
                 $this->updateFamilyMember($existingFms[$its], $memberRow, $columnMap);
@@ -827,6 +836,12 @@ class ImportController extends Controller
     {
         $name = $this->getValue($memberRow, $columnMap, 'full_name') ?? '';
         $its = $this->getValue($memberRow, $columnMap, 'its_id') ?? '';
+        
+        // Skip if ITS is empty (throw exception so caller knows it failed)
+        if (empty($its)) {
+            throw new \Exception('ITS_ID is empty for FM');
+        }
+        
         $sector = $this->getValue($memberRow, $columnMap, 'sector');
         $subSector = $this->getValue($memberRow, $columnMap, 'sub_sector');
         $mobile = $this->getValue($memberRow, $columnMap, 'mobile');
@@ -841,6 +856,7 @@ class ImportController extends Controller
         $age = ($age && $age !== '' && $age !== '0') ? (int) $age : null;
         $picUrl = url('storage/uploads/its_images/placeholder.jpg');
 
+        // Let database handle unique constraint - if ITS already exists, it will throw an exception
         MumineenModel::create([
             'family_id' => $familyId,
             'hof_type' => 'FM',
