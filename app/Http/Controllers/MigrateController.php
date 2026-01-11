@@ -415,10 +415,14 @@ class MigrateController extends Controller
                         
                         $apiFamilyId = !empty($item['family_id']) ? (int) $item['family_id'] : 0;
                         
-                        if ($type === 'PERSONAL') {
-                            $familyId = $apiFamilyId > 0 ? $apiFamilyId : null;
-                        } elseif ($type === 'ESTABLISHMENT') {
+                        if ($type === 'ESTABLISHMENT') {
+                            // For ESTABLISHMENT type, store in establishment_id
                             $establishmentId = $apiFamilyId > 0 ? $apiFamilyId : null;
+                            $familyId = null; // Ensure family_id is null for establishments
+                        } else {
+                            // For PERSONAL type (or any other), store in family_id
+                            $familyId = $apiFamilyId > 0 ? $apiFamilyId : null;
+                            $establishmentId = null; // Ensure establishment_id is null for personal
                         }
 
                         // Process ITS (only for PERSONAL type, and not "0" or "Array")
