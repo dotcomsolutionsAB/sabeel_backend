@@ -164,173 +164,114 @@ class DashboardController extends Controller
     public function retrieveSabeelDue(Request $request)
     {
         try {
-            $filter = trim((string) $request->input('filter', ''));
+            $request->validate([
+                'type' => 'required|in:sabeel,establishment',
+            ]);
 
-            if (!in_array($filter, ['family','due_family','establishment','due_establishment'], true)) {
-                return $this->error('Invalid filter. Allowed: family, due_family, establishment, due_establishment', 422);
-            }
-
-            /* ============================================================
-            FAMILY DUE CALCULATION
-            ============================================================ */
-            if ($filter === 'family' || $filter === 'due_family') {
-                // Base: all active HOF
-                $q = MumineenModel::query()
-                    ->where('hof_type', 'HOF')
-                    ->where('status', 'active')
-                    ->select('family_id');
-
-                // If due_family -> only those having due (paid < sabeel)
-                if ($filter === 'due_family') {
-                    // For all years, check if any year has due
-                    $q->whereIn('family_id', function ($sub) {
-                        $sub->from('t_mumineen_sabeel as s')
-                            ->leftJoin('t_receipts as r', function ($j) {
-                                $j->on('s.family_id', '=', 'r.family_id')
-                                ->on('s.year', '=', 'r.year')
-                                ->where('r.status', 'active');
-                            })
-                            ->select('s.family_id')
-                            ->groupBy('s.family_id', 's.year')
-                            ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
-                    });
-                }
-
-                $hofs = $q->get();
-                $familyIds = $hofs->pluck('family_id')->unique()->all();
-
-                if (empty($familyIds)) {
-                    return $this->success('Sabeel due fetched', [], 200);
-                }
-
-                // Get all sabeel data grouped by family_id and year
-                $sabeelData = DB::table('t_mumineen_sabeel')
-                    ->whereIn('family_id', $familyIds)
-                    ->select('family_id', 'year', 'sabeel')
-                    ->get()
-                    ->groupBy('family_id');
-
-                // Get all paid data grouped by family_id and year
-                $paidData = DB::table('t_receipts')
-                    ->whereIn('family_id', $familyIds)
-                    ->where('status', 'active')
-                    ->select('family_id', 'year', DB::raw('SUM(amount) as paid'))
-                    ->groupBy('family_id', 'year')
-                    ->get()
-                    ->groupBy('family_id');
-
-                // Calculate due per year
-                $yearDueMap = [];
-
-                foreach ($familyIds as $familyId) {
-                    $familySabeels = $sabeelData->get($familyId, collect());
-                    $familyPaids = $paidData->get($familyId, collect());
-
-                    // Get all unique years for this family
-                    $years = $familySabeels->pluck('year')->merge($familyPaids->pluck('year'))->unique()->sort();
-
-                    foreach ($years as $yr) {
-                        $sabeelEntry = $familySabeels->firstWhere('year', $yr);
-                        $paidEntry = $familyPaids->firstWhere('year', $yr);
-
-                        $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
-                        $paid   = (float) ($paidEntry->paid ?? 0);
-                        $due    = max(0, $sabeel - $paid);
-
-                        // If filter is due_family, only include rows with due > 0
-                        if ($filter === 'due_family' && $due <= 0) {
-                            continue;
-                        }
-
-                        if (!isset($yearDueMap[$yr])) {
-                            $yearDueMap[$yr] = 0;
-                        }
-                        $yearDueMap[$yr] += $due;
-                    }
-                }
-
-                // Convert to array format
-                $data = collect($yearDueMap)->map(function ($due, $year) {
-                    return [
-                        'year' => (string) $year,
-                        'due'  => (string) $due,
-                    ];
-                })->values()->sortByDesc('year')->values()->all();
-
-                return $this->success('Sabeel due fetched', $data, 200);
-            }
-
-            /* ============================================================
-            ESTABLISHMENT DUE CALCULATION
-            ============================================================ */
-            // Base establishment query
-            $q = EstablishmentModel::query()->select('establishment_id');
-
-            // due_establishment -> only those having due (paid < sabeel)
-            if ($filter === 'due_establishment') {
-                // For all years, check if any year has due
-                $q->whereIn('establishment_id', function ($sub) {
-                    $sub->from('t_establishment_sabeel as s')
-                        ->leftJoin('t_receipts as r', function ($j) {
-                            $j->on('s.establishment_id', '=', 'r.establishment_id')
-                            ->on('s.year', '=', 'r.year')
-                            ->where('r.status', 'active');
-                        })
-                        ->select('s.establishment_id')
-                        ->groupBy('s.establishment_id', 's.year')
-                        ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
-                });
-            }
-
-            $establishments = $q->get();
-            $estIds = $establishments->pluck('establishment_id')->all();
-
-            if (empty($estIds)) {
-                return $this->success('Sabeel due fetched', [], 200);
-            }
-
-            // Get all sabeel data grouped by establishment_id and year
-            $sabeelData = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
-                ->select('establishment_id', 'year', 'sabeel')
-                ->get()
-                ->groupBy('establishment_id');
-
-            // Get all paid data grouped by establishment_id and year
-            $paidData = DB::table('t_receipts')
-                ->whereIn('establishment_id', $estIds)
-                ->where('status', 'active')
-                ->select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
-                ->groupBy('establishment_id', 'year')
-                ->get()
-                ->groupBy('establishment_id');
-
-            // Calculate due per year
             $yearDueMap = [];
 
-            foreach ($estIds as $estId) {
-                $estSabeels = $sabeelData->get($estId, collect());
-                $estPaids = $paidData->get($estId, collect());
+            if ($request->type === 'sabeel') {
+                /* ============================================================
+                FAMILY DUE CALCULATION
+                ============================================================ */
+                // Base: all active HOF
+                $hofs = MumineenModel::query()
+                    ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
+                    ->select('family_id')
+                    ->get();
 
-                // Get all unique years for this establishment
-                $years = $estSabeels->pluck('year')->merge($estPaids->pluck('year'))->unique();
+                $familyIds = $hofs->pluck('family_id')->unique()->all();
 
-                foreach ($years as $yr) {
-                    $sabeelEntry = $estSabeels->firstWhere('year', $yr);
-                    $paidEntry = $estPaids->firstWhere('year', $yr);
+                if (!empty($familyIds)) {
+                    // Get all sabeel data grouped by family_id and year
+                    $sabeelData = DB::table('t_mumineen_sabeel')
+                        ->whereIn('family_id', $familyIds)
+                        ->select('family_id', 'year', 'sabeel')
+                        ->get()
+                        ->groupBy('family_id');
 
-                    $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
-                    $paid   = (float) ($paidEntry->paid ?? 0);
-                    $due    = max(0, $sabeel - $paid);
+                    // Get all paid data grouped by family_id and year
+                    $paidData = DB::table('t_receipts')
+                        ->whereIn('family_id', $familyIds)
+                        ->where('status', 'active')
+                        ->select('family_id', 'year', DB::raw('SUM(amount) as paid'))
+                        ->groupBy('family_id', 'year')
+                        ->get()
+                        ->groupBy('family_id');
 
-                    // If filter is due_establishment, only include rows with due > 0
-                    if ($filter === 'due_establishment' && $due <= 0) {
-                        continue;
+                    // Calculate due per year for families
+                    foreach ($familyIds as $familyId) {
+                        $familySabeels = $sabeelData->get($familyId, collect());
+                        $familyPaids = $paidData->get($familyId, collect());
+
+                        // Get all unique years for this family
+                        $years = $familySabeels->pluck('year')->merge($familyPaids->pluck('year'))->unique()->sort();
+
+                        foreach ($years as $yr) {
+                            $sabeelEntry = $familySabeels->firstWhere('year', $yr);
+                            $paidEntry = $familyPaids->firstWhere('year', $yr);
+
+                            $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
+                            $paid   = (float) ($paidEntry->paid ?? 0);
+                            $due    = max(0, $sabeel - $paid);
+
+                            if (!isset($yearDueMap[$yr])) {
+                                $yearDueMap[$yr] = 0;
+                            }
+                            $yearDueMap[$yr] += $due;
+                        }
                     }
+                }
+            } else {
+                /* ============================================================
+                ESTABLISHMENT DUE CALCULATION
+                ============================================================ */
+                // Base establishment query
+                $establishments = EstablishmentModel::query()
+                    ->select('establishment_id')
+                    ->get();
 
-                    if (!isset($yearDueMap[$yr])) {
-                        $yearDueMap[$yr] = 0;
+                $estIds = $establishments->pluck('establishment_id')->all();
+
+                if (!empty($estIds)) {
+                    // Get all sabeel data grouped by establishment_id and year
+                    $sabeelData = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+                        ->select('establishment_id', 'year', 'sabeel')
+                        ->get()
+                        ->groupBy('establishment_id');
+
+                    // Get all paid data grouped by establishment_id and year
+                    $paidData = DB::table('t_receipts')
+                        ->whereIn('establishment_id', $estIds)
+                        ->where('status', 'active')
+                        ->select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
+                        ->groupBy('establishment_id', 'year')
+                        ->get()
+                        ->groupBy('establishment_id');
+
+                    // Calculate due per year for establishments
+                    foreach ($estIds as $estId) {
+                        $estSabeels = $sabeelData->get($estId, collect());
+                        $estPaids = $paidData->get($estId, collect());
+
+                        // Get all unique years for this establishment
+                        $years = $estSabeels->pluck('year')->merge($estPaids->pluck('year'))->unique()->sort();
+
+                        foreach ($years as $yr) {
+                            $sabeelEntry = $estSabeels->firstWhere('year', $yr);
+                            $paidEntry = $estPaids->firstWhere('year', $yr);
+
+                            $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
+                            $paid   = (float) ($paidEntry->paid ?? 0);
+                            $due    = max(0, $sabeel - $paid);
+
+                            if (!isset($yearDueMap[$yr])) {
+                                $yearDueMap[$yr] = 0;
+                            }
+                            $yearDueMap[$yr] += $due;
+                        }
                     }
-                    $yearDueMap[$yr] += $due;
                 }
             }
 
