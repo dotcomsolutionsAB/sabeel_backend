@@ -139,6 +139,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     // import route
     Route::post('/import/mumineen/dry-run', [ImportController::class, 'dryRun']);
     Route::post('/import/mumineen/execute', [ImportController::class, 'execute']);
+    Route::post('/import/mumineen/external-families', [ImportController::class, 'getExternalFamilies']);
     
     // import log route
     Route::post('/import/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);

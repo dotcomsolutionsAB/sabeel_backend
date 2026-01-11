@@ -214,6 +214,9 @@ class ImportController extends Controller
 
                 // Execute import
                 $result = $this->performImport($families, $columnMap, $log);
+                
+                // Mark HOFs not in Excel as external
+                $this->markExternalHofs($families, $columnMap);
 
                 $log->update([
                     'status' => 'completed',
@@ -774,6 +777,7 @@ class ImportController extends Controller
             'age' => $age,
             'pic' => $picUrl,
             'status' => 'active',
+            'external' => false, // New HOFs from Excel are not external
         ]);
     }
 
@@ -1014,5 +1018,108 @@ class ImportController extends Controller
         } while (MumineenModel::where('family_id', $familyId)->exists());
 
         return $familyId;
+    }
+
+    /**
+     * Mark HOFs not in Excel as external
+     */
+    private function markExternalHofs(array $families, array $columnMap): void
+    {
+        // Get all HOF ITS from Excel file
+        $excelHofIts = [];
+        foreach ($families as $members) {
+            foreach ($members as $member) {
+                $hofType = strtoupper(trim($this->getValue($member, $columnMap, 'hof_fm_type') ?? ''));
+                if ($hofType === 'HOF') {
+                    $its = $this->getValue($member, $columnMap, 'its_id');
+                    if (!empty($its)) {
+                        $excelHofIts[] = $its;
+                    }
+                    break; // Only one HOF per family
+                }
+            }
+        }
+
+        // Update external flag based on whether HOF is in Excel
+        if (!empty($excelHofIts)) {
+            // Reset external = false for HOFs in Excel
+            MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->whereIn('its', $excelHofIts)
+                ->update(['external' => false]);
+
+            // Mark external = true for HOFs not in Excel
+            MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->whereNotIn('its', $excelHofIts)
+                ->update(['external' => true]);
+        } else {
+            // If no Excel HOFs, mark all active HOFs as external
+            MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->update(['external' => true]);
+        }
+    }
+
+    /**
+     * Get list of external families (HOFs active but not in Excel)
+     * POST /import/mumineen/external-families
+     */
+    public function getExternalFamilies(Request $request)
+    {
+        try {
+            $limit = max(1, (int) $request->input('limit', 50));
+            $offset = max(0, (int) $request->input('offset', 0));
+            $search = trim((string) $request->input('search', ''));
+
+            // Get external HOFs (active HOFs with external = true)
+            $query = MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->where('external', true)
+                ->orderBy('name', 'asc');
+
+            if ($search !== '') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('its', 'like', "%{$search}%")
+                        ->orWhere('sector', 'like', "%{$search}%");
+                });
+            }
+
+            $total = $query->count();
+            $hofs = $query->skip($offset)->take($limit)->get();
+
+            $families = [];
+            foreach ($hofs as $hof) {
+                // Get family members count
+                $fmCount = MumineenModel::where('family_id', $hof->family_id)
+                    ->where('hof_type', 'FM')
+                    ->where('status', 'active')
+                    ->count();
+
+                $families[] = [
+                    'family_id' => (string) $hof->family_id,
+                    'hof_its' => $hof->its,
+                    'hof_name' => $hof->name,
+                    'sector' => $hof->sector ?? '',
+                    'sub_sector' => $hof->sub_sector ?? '',
+                    'mobile' => $hof->mobile ?? '',
+                    'email' => $hof->email ?? '',
+                    'fm_count' => $fmCount,
+                ];
+            }
+
+            return $this->success('External families fetched successfully', $families, 200, [
+                'pagination' => [
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'count' => count($families),
+                    'total' => $total,
+                ]
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Get external families failed');
+        }
     }
 }

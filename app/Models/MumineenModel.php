@@ -25,11 +25,13 @@ class MumineenModel extends Model
         'age',
         'pic',
         'status',
+        'external',
     ];
 
     protected $casts = [
         'family_id' => 'integer',
         'age'       => 'integer',
+        'external'  => 'boolean',
     ];
 
     // One family can have many links to establishments
