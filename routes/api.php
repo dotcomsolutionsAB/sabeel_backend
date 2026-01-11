@@ -144,6 +144,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/mumineen/external-families', [ImportController::class, 'getExternalFamilies']);
         Route::post('/mumineen/merge-family/dry-run', [ImportController::class, 'mergeFamilyDryRun']);
         Route::post('/mumineen/merge-family/execute', [ImportController::class, 'mergeFamilyExecute']);
+        Route::post('/sabeel-receipts-check/dry-run', [ImportController::class, 'sabeelReceiptsCheckDryRun']);
         Route::post('/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);
     });
 });

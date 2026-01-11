@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Traits\ApiResponse;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
+use App\Models\EstablishmentSabeelModel;
+use App\Models\EstablishmentModel;
 use App\Models\YearModel;
 use App\Models\ImportLogModel;
 use App\Models\ReceiptModel;
@@ -1461,6 +1463,155 @@ class ImportController extends Controller
             }
 
             return $this->serverError($e, 'Merge family execute failed');
+        }
+    }
+
+    /**
+     * DRY RUN: Check for sabeel vs receipts paid discrepancies
+     * POST /import/sabeel-receipts-check/dry-run
+     * 
+     * Finds family_id/establishment_id - year combinations where
+     * sabeel amount < receipts paid amount
+     */
+    public function sabeelReceiptsCheckDryRun(Request $request)
+    {
+        try {
+            set_time_limit(600);
+            ini_set('memory_limit', '512M');
+
+            $issues = [
+                'family_issues' => [],
+                'establishment_issues' => [],
+                'summary' => [
+                    'total_family_issues' => 0,
+                    'total_establishment_issues' => 0,
+                    'total_families_checked' => 0,
+                    'total_establishments_checked' => 0,
+                ]
+            ];
+
+            // Check FAMILY sabeel vs receipts
+            $familySabeels = MumineenSabeelModel::select('family_id', 'year', DB::raw('SUM(sabeel) as total_sabeel'))
+                ->groupBy('family_id', 'year')
+                ->get();
+
+            $issues['summary']['total_families_checked'] = $familySabeels->count();
+
+            foreach ($familySabeels as $sabeel) {
+                // Get total paid receipts for this family_id and year
+                $totalPaid = ReceiptModel::where('family_id', $sabeel->family_id)
+                    ->where('year', $sabeel->year)
+                    ->where('status', 'active')
+                    ->sum('amount');
+
+                $totalSabeel = (float) $sabeel->total_sabeel;
+                $totalPaid = (float) $totalPaid;
+
+                // Check if sabeel < paid
+                if ($totalSabeel < $totalPaid) {
+                    // Get family details
+                    $family = MumineenModel::where('family_id', $sabeel->family_id)
+                        ->where('hof_type', 'HOF')
+                        ->first();
+
+                    $issues['family_issues'][] = [
+                        'family_id' => (string) $sabeel->family_id,
+                        'year' => $sabeel->year,
+                        'family_name' => $family ? $family->name : 'Unknown',
+                        'family_its' => $family ? $family->its : '',
+                        'sabeel_amount' => (string) $totalSabeel,
+                        'receipts_paid' => (string) $totalPaid,
+                        'difference' => (string) ($totalPaid - $totalSabeel),
+                        'excess_paid' => (string) ($totalPaid - $totalSabeel),
+                    ];
+                }
+            }
+
+            $issues['summary']['total_family_issues'] = count($issues['family_issues']);
+
+            // Check ESTABLISHMENT sabeel vs receipts
+            $establishmentSabeels = EstablishmentSabeelModel::select('establishment_id', 'year', DB::raw('SUM(sabeel) as total_sabeel'))
+                ->groupBy('establishment_id', 'year')
+                ->get();
+
+            $issues['summary']['total_establishments_checked'] = $establishmentSabeels->count();
+
+            foreach ($establishmentSabeels as $sabeel) {
+                // Get total paid receipts for this establishment_id and year
+                $totalPaid = ReceiptModel::where('establishment_id', $sabeel->establishment_id)
+                    ->where('year', $sabeel->year)
+                    ->where('status', 'active')
+                    ->sum('amount');
+
+                $totalSabeel = (float) $sabeel->total_sabeel;
+                $totalPaid = (float) $totalPaid;
+
+                // Check if sabeel < paid
+                if ($totalSabeel < $totalPaid) {
+                    // Get establishment details
+                    $establishment = EstablishmentModel::where('establishment_id', $sabeel->establishment_id)
+                        ->first();
+
+                    $issues['establishment_issues'][] = [
+                        'establishment_id' => (string) $sabeel->establishment_id,
+                        'year' => $sabeel->year,
+                        'establishment_name' => $establishment ? $establishment->name : 'Unknown',
+                        'sabeel_amount' => (string) $totalSabeel,
+                        'receipts_paid' => (string) $totalPaid,
+                        'difference' => (string) ($totalPaid - $totalSabeel),
+                        'excess_paid' => (string) ($totalPaid - $totalSabeel),
+                    ];
+                }
+            }
+
+            $issues['summary']['total_establishment_issues'] = count($issues['establishment_issues']);
+
+            // Create log entry
+            $log = ImportLogModel::create([
+                'operation_type' => 'sabeel_receipts_check_dry_run',
+                'file_name' => 'N/A',
+                'total_records' => $issues['summary']['total_families_checked'] + $issues['summary']['total_establishments_checked'],
+                'hof_found' => $issues['summary']['total_families_checked'],
+                'hof_updated' => $issues['summary']['total_establishment_issues'],
+                'hof_created' => 0,
+                'fm_synced' => 0,
+                'fm_added' => 0,
+                'fm_removed' => 0,
+                'sabeel_created' => 0,
+                'errors' => $issues['summary']['total_family_issues'] + $issues['summary']['total_establishment_issues'],
+                'status' => 'completed',
+                'user_id' => auth()->check() ? auth()->id() : null,
+                'details' => [
+                    'total_families_checked' => $issues['summary']['total_families_checked'],
+                    'total_family_issues' => $issues['summary']['total_family_issues'],
+                    'total_establishments_checked' => $issues['summary']['total_establishments_checked'],
+                    'total_establishment_issues' => $issues['summary']['total_establishment_issues'],
+                ],
+                'error_log' => array_merge(
+                    array_slice($issues['family_issues'], 0, 100), // Limit to first 100 family issues
+                    array_slice($issues['establishment_issues'], 0, 100) // Limit to first 100 establishment issues
+                ),
+            ]);
+
+            return $this->success('Sabeel vs receipts check completed', [
+                'log_id' => $log->id,
+                'summary' => $issues['summary'],
+                'family_issues' => $issues['family_issues'],
+                'establishment_issues' => $issues['establishment_issues'],
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Sabeel vs receipts check dry run failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            if (config('app.debug')) {
+                return $this->error('Sabeel vs receipts check failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500);
+            }
+            return $this->serverError($e, 'Sabeel vs receipts check failed');
         }
     }
 }
