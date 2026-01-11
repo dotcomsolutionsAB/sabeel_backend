@@ -731,7 +731,12 @@ class ImportController extends Controller
             $updates['hof_its'] = $hofIts;
         }
 
+        // Map Family_ID from Excel to family_its in database
         $familyIts = $this->getValue($hofRow, $columnMap, 'family_its');
+        if ($familyIts === null) {
+            // If family_its not found, try family_id (Excel column Family_ID)
+            $familyIts = $this->getValue($hofRow, $columnMap, 'family_id');
+        }
         if ($familyIts !== null) {
             $updates['family_its'] = $familyIts;
         }
@@ -777,7 +782,13 @@ class ImportController extends Controller
         $picUrl = url('storage/uploads/its_images/placeholder.jpg');
 
         $hofIts = $this->getValue($hofRow, $columnMap, 'hof_its');
+        
+        // Map Family_ID from Excel to family_its in database
         $familyIts = $this->getValue($hofRow, $columnMap, 'family_its');
+        if ($familyIts === null) {
+            // If family_its not found, try family_id (Excel column Family_ID)
+            $familyIts = $this->getValue($hofRow, $columnMap, 'family_id');
+        }
 
         return MumineenModel::create([
             'family_id' => $familyId,
@@ -1008,7 +1019,12 @@ class ImportController extends Controller
             $updates['hof_its'] = $hofIts;
         }
 
+        // Map Family_ID from Excel to family_its in database
         $familyIts = $this->getValue($memberRow, $columnMap, 'family_its');
+        if ($familyIts === null) {
+            // If family_its not found, try family_id (Excel column Family_ID)
+            $familyIts = $this->getValue($memberRow, $columnMap, 'family_id');
+        }
         if ($familyIts !== null) {
             $updates['family_its'] = $familyIts;
         }
