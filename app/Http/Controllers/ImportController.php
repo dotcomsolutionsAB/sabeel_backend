@@ -11,8 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportController extends Controller
 {
@@ -36,15 +38,30 @@ class ImportController extends Controller
             $file = $request->file('file');
             $fileName = $file->getClientOriginalName();
 
-            // Read Excel file
-            $rows = Excel::toArray([], $file);
+            // Read Excel file using PhpSpreadsheet directly
+            try {
+                $spreadsheet = IOFactory::load($file->getRealPath());
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray();
+            } catch (\Exception $e) {
+                Log::error('Excel read error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                return $this->error('Failed to read Excel file: ' . $e->getMessage(), 422);
+            }
             
-            if (empty($rows) || empty($rows[0])) {
-                return $this->error('Excel file is empty or invalid', 422);
+            if (empty($rows) || count($rows) < 2) {
+                return $this->error('Excel file is empty or invalid (needs at least header and one data row)', 422);
             }
 
-            $data = $rows[0];
-            $headers = array_shift($data); // Remove header row
+            $headers = array_shift($rows); // Remove header row
+            $data = $rows;
+            
+            if (empty($data)) {
+                return $this->error('Excel file contains no data rows', 422);
+            }
+            
+            if (empty($headers)) {
+                return $this->error('Excel file headers are missing', 422);
+            }
 
             // Map column indices
             $columnMap = $this->mapColumns($headers);
@@ -123,20 +140,49 @@ class ImportController extends Controller
             ]);
 
             try {
-                // Read Excel file
-                $rows = Excel::toArray([], $file);
-                
-                if (empty($rows) || empty($rows[0])) {
+                // Read Excel file using PhpSpreadsheet directly
+                try {
+                    $spreadsheet = IOFactory::load($file->getRealPath());
+                    $worksheet = $spreadsheet->getActiveSheet();
+                    $rows = $worksheet->toArray();
+                } catch (\Exception $e) {
                     $log->update([
                         'status' => 'failed',
-                        'error_log' => [['message' => 'Excel file is empty or invalid']],
+                        'error_log' => [['message' => 'Failed to read Excel file: ' . $e->getMessage()]],
+                        'errors' => 1,
+                    ]);
+                    return $this->error('Failed to read Excel file: ' . $e->getMessage(), 422);
+                }
+                
+                if (empty($rows) || count($rows) < 2) {
+                    $log->update([
+                        'status' => 'failed',
+                        'error_log' => [['message' => 'Excel file is empty or invalid (needs at least header and one data row)']],
                         'errors' => 1,
                     ]);
                     return $this->error('Excel file is empty or invalid', 422);
                 }
 
-                $data = $rows[0];
-                $headers = array_shift($data); // Remove header row
+                $headers = array_shift($rows); // Remove header row
+                $data = $rows;
+                
+                if (empty($data)) {
+                    $log->update([
+                        'status' => 'failed',
+                        'error_log' => [['message' => 'Excel file contains no data rows']],
+                        'errors' => 1,
+                    ]);
+                    return $this->error('Excel file contains no data rows', 422);
+                }
+                
+                if (empty($headers)) {
+                    $log->update([
+                        'status' => 'failed',
+                        'error_log' => [['message' => 'Excel file headers are missing']],
+                        'errors' => 1,
+                    ]);
+                    return $this->error('Excel file headers are missing', 422);
+                }
 
                 // Map column indices
                 $columnMap = $this->mapColumns($headers);
