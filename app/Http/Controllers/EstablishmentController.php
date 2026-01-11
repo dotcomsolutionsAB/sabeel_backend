@@ -91,7 +91,7 @@ class EstablishmentController extends Controller
 
             $q = EstablishmentModel::query()
                 ->select('id','establishment_id','name','address','type','status')
-                ->orderBy('id','desc');
+                ->orderBy('name','asc');
 
             // SEARCH: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
             if ($search !== '') {
@@ -181,14 +181,35 @@ class EstablishmentController extends Controller
     {
         try {
             $est = EstablishmentModel::find($id);
-            if (!$est) return $this->error('Establishment not found.', 404);
+            if (!$est) {
+                return $this->error('Establishment not found.', 404);
+            }
 
-            // Optional safety: prevent delete if linked
-            // if ($est->mumineenLinks()->exists()) return $this->error('Cannot delete. Establishment has partners linked.', 409);
+            // Validation: Check if there are any receipts for this establishment
+            $receiptsCount = ReceiptModel::where('establishment_id', $est->establishment_id)
+                ->count();
 
-            $est->delete();
+            if ($receiptsCount > 0) {
+                return $this->error("Cannot delete establishment. There are {$receiptsCount} receipt(s) associated with this establishment.", 409);
+            }
 
-            return $this->success('Data deleted successfully', [], 200);
+            DB::beginTransaction();
+
+            try {
+                // Delete establishment_sabeel entries first
+                EstablishmentSabeelModel::where('establishment_id', $est->establishment_id)->delete();
+
+                // Delete establishment record
+                $est->delete();
+
+                DB::commit();
+
+                return $this->success('Establishment deleted successfully', [], 200);
+
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment delete failed');
