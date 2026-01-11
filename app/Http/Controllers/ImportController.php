@@ -27,6 +27,10 @@ class ImportController extends Controller
     public function dryRun(Request $request)
     {
         try {
+            // Increase execution time and memory for large files
+            set_time_limit(600); // 10 minutes
+            ini_set('memory_limit', '512M');
+            
             $validator = Validator::make($request->all(), [
                 'file' => 'required|file|mimes:xlsx,xls|max:10240', // 10MB max
             ]);
@@ -134,6 +138,10 @@ class ImportController extends Controller
     public function execute(Request $request)
     {
         try {
+            // Increase execution time and memory for large files
+            set_time_limit(600); // 10 minutes
+            ini_set('memory_limit', '512M');
+            
             $validator = Validator::make($request->all(), [
                 'file' => 'required|file|mimes:xlsx,xls|max:10240', // 10MB max
             ]);
