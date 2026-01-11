@@ -109,6 +109,20 @@ class ImportController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
+            // Log detailed error information
+            Log::error('Dry run failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'previous' => $e->getPrevious() ? $e->getPrevious()->getMessage() : null,
+            ]);
+            
+            // In development, return more details
+            if (config('app.debug')) {
+                return $this->error('Dry run failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500);
+            }
+            
             return $this->serverError($e, 'Dry run failed');
         }
     }
@@ -233,6 +247,20 @@ class ImportController extends Controller
             }
 
         } catch (\Throwable $e) {
+            // Log detailed error information
+            Log::error('Import execution failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'previous' => $e->getPrevious() ? $e->getPrevious()->getMessage() : null,
+            ]);
+            
+            // In development, return more details
+            if (config('app.debug')) {
+                return $this->error('Import execution failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500);
+            }
+            
             return $this->serverError($e, 'Import execution failed');
         }
     }
