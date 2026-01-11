@@ -126,8 +126,17 @@ class MumineenController extends Controller
 
             $q = MumineenModel::query()
                 ->where('hof_type', 'HOF')
+                ->whereNotIn('its', ['20320125', '20303586', '30350003'])
                 ->select('id','family_id','its','name','sector','mobile','email', 'pic')
-                ->orderBy('id', 'desc');
+                ->orderByRaw("CASE 
+                    WHEN sector = 'BURHANI' THEN 1 
+                    WHEN sector = 'EZZY' THEN 2 
+                    WHEN sector = 'MOHAMMEDI' THEN 3 
+                    WHEN sector = 'SHUJAI' THEN 4 
+                    WHEN sector = 'ZAINY' THEN 5 
+                    ELSE 6 
+                END")
+                ->orderBy('name', 'asc');
 
             // search in name, its, sector, and also family member its numbers
             if ($search !== '') {
@@ -324,6 +333,15 @@ class MumineenController extends Controller
             $filter = trim((string) $request->input('filter', ''));
 
             $q = MumineenModel::where('hof_type','HOF')
+                ->whereNotIn('its', ['20320125', '20303586', '30350003'])
+                ->orderByRaw("CASE 
+                    WHEN sector = 'BURHANI' THEN 1 
+                    WHEN sector = 'EZZY' THEN 2 
+                    WHEN sector = 'MOHAMMEDI' THEN 3 
+                    WHEN sector = 'SHUJAI' THEN 4 
+                    WHEN sector = 'ZAINY' THEN 5 
+                    ELSE 6 
+                END")
                 ->orderBy('name','asc');
 
 
