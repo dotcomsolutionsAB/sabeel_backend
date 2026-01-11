@@ -44,17 +44,19 @@ class DashboardController extends Controller
 
             /* ================= MUMINEEN ================= */
 
-            $totalHouses = MumineenModel::where('status', 'active')->distinct('family_id')->count('family_id');
+            $totalHouses = MumineenModel::where('status', 'active')
+                ->selectRaw('COUNT(DISTINCT family_id) as count')
+                ->value('count') ?? 0;
             
             $externalHouses = MumineenModel::where('status', 'active')
                 ->where('external', true)
-                ->distinct('family_id')
-                ->count('family_id');
+                ->selectRaw('COUNT(DISTINCT family_id) as count')
+                ->value('count') ?? 0;
 
             // Get all active HOF family_ids
             $activeHofFamilyIds = MumineenModel::where('hof_type', 'HOF')
                 ->where('status', 'active')
-                ->distinct('family_id')
+                ->selectRaw('DISTINCT family_id')
                 ->pluck('family_id')
                 ->all();
 
@@ -119,8 +121,8 @@ class DashboardController extends Controller
                     $q->select('family_id')
                       ->from('t_mumineen_establishment');
                 })
-                ->distinct('family_id')
-                ->count('family_id');
+                ->select(DB::raw('COUNT(DISTINCT family_id) as count'))
+                ->value('count') ?? 0;
 
             /* ================= ESTABLISHMENT ================= */
 
@@ -156,8 +158,9 @@ class DashboardController extends Controller
                 ->select('s.establishment_id')
                 ->groupBy('s.establishment_id', 's.year')
                 ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
-                ->distinct('s.establishment_id')
-                ->count('s.establishment_id');
+                ->pluck('establishment_id')
+                ->unique()
+                ->count();
 
             $partnerNotTagged = EstablishmentModel::whereNotIn('establishment_id', function ($q) {
                     $q->select('establishment_id')
