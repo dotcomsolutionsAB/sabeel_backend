@@ -137,10 +137,12 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::post('/migrate/receipts', [MigrateController::class, 'syncReceipts']);
 
     // import route
-    Route::post('/import/mumineen/dry-run', [ImportController::class, 'dryRun']);
-    Route::post('/import/mumineen/execute', [ImportController::class, 'execute']);
-    Route::post('/import/mumineen/external-families', [ImportController::class, 'getExternalFamilies']);
-    
-    // import log route
-    Route::post('/import/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);
+    Route::prefix('import')->group(function () {
+        Route::post('/mumineen/dry-run', [ImportController::class, 'dryRun']);
+        Route::post('/mumineen/execute', [ImportController::class, 'execute']);
+        Route::post('/mumineen/external-families', [ImportController::class, 'getExternalFamilies']);
+        Route::post('/mumineen/merge-family/dry-run', [ImportController::class, 'mergeFamilyDryRun']);
+        Route::post('/mumineen/merge-family/execute', [ImportController::class, 'mergeFamilyExecute']);
+        Route::post('/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);
+    });
 });

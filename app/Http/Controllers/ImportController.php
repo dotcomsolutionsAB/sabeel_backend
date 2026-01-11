@@ -7,6 +7,8 @@ use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\YearModel;
 use App\Models\ImportLogModel;
+use App\Models\ReceiptModel;
+use App\Models\MumineenEstablishmentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
@@ -1120,6 +1122,265 @@ class ImportController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Get external families failed');
+        }
+    }
+
+    /**
+     * Dry run - Analyze family merge operation
+     * POST /import/mumineen/merge-family/dry-run
+     */
+    public function mergeFamilyDryRun(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'external_family_id' => 'required|integer',
+                'current_family_id' => 'required|integer',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $externalFamilyId = (int) $request->input('external_family_id');
+            $currentFamilyId = (int) $request->input('current_family_id');
+
+            // Validate both families exist and are HOF
+            $externalHof = MumineenModel::where('family_id', $externalFamilyId)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            $currentHof = MumineenModel::where('family_id', $currentFamilyId)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            if (!$externalHof) {
+                return $this->error('External family not found or not a HOF', 404);
+            }
+
+            if (!$currentHof) {
+                return $this->error('Current family not found or not a HOF', 404);
+            }
+
+            if (!$externalHof->external) {
+                return $this->error('External family must have external = true', 422);
+            }
+
+            if ($externalFamilyId === $currentFamilyId) {
+                return $this->error('External family ID and current family ID cannot be the same', 422);
+            }
+
+            // Analyze changes
+            $receiptsCount = ReceiptModel::where('family_id', $externalFamilyId)->count();
+            $sabeelCount = MumineenSabeelModel::where('family_id', $externalFamilyId)->count();
+            $establishmentCount = MumineenEstablishmentModel::where('family_id', $externalFamilyId)->count();
+            $mumineenCount = MumineenModel::where('family_id', $externalFamilyId)->count();
+
+            // Get family member details
+            $externalFamilyMembers = MumineenModel::where('family_id', $externalFamilyId)->get();
+            $members = [];
+            foreach ($externalFamilyMembers as $member) {
+                $members[] = [
+                    'id' => $member->id,
+                    'its' => $member->its,
+                    'name' => $member->name,
+                    'hof_type' => $member->hof_type,
+                ];
+            }
+
+            // Create log entry
+            $log = ImportLogModel::create([
+                'operation_type' => 'merge_family_dry_run',
+                'file_name' => "Merge {$externalFamilyId} to {$currentFamilyId}",
+                'total_records' => $mumineenCount,
+                'status' => 'completed',
+                'user_id' => auth()->check() ? auth()->id() : null,
+                'details' => [
+                    'external_family_id' => $externalFamilyId,
+                    'current_family_id' => $currentFamilyId,
+                    'external_hof_name' => $externalHof->name,
+                    'external_hof_its' => $externalHof->its,
+                    'current_hof_name' => $currentHof->name,
+                    'current_hof_its' => $currentHof->its,
+                    'receipts_to_update' => $receiptsCount,
+                    'sabeel_to_update' => $sabeelCount,
+                    'establishment_to_update' => $establishmentCount,
+                    'mumineen_to_delete' => $mumineenCount,
+                    'members' => $members,
+                ],
+            ]);
+
+            return $this->success('Merge family dry run analysis completed', [
+                'log_id' => $log->id,
+                'external_family_id' => $externalFamilyId,
+                'current_family_id' => $currentFamilyId,
+                'external_hof' => [
+                    'its' => $externalHof->its,
+                    'name' => $externalHof->name,
+                    'sector' => $externalHof->sector,
+                ],
+                'current_hof' => [
+                    'its' => $currentHof->its,
+                    'name' => $currentHof->name,
+                    'sector' => $currentHof->sector,
+                ],
+                'summary' => [
+                    'receipts_to_update' => $receiptsCount,
+                    'sabeel_to_update' => $sabeelCount,
+                    'establishment_to_update' => $establishmentCount,
+                    'mumineen_to_delete' => $mumineenCount,
+                    'total_records_affected' => $receiptsCount + $sabeelCount + $establishmentCount + $mumineenCount,
+                ],
+                'members_to_delete' => $members,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Merge family dry run failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            if (config('app.debug')) {
+                return $this->error('Merge family dry run failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500);
+            }
+
+            return $this->serverError($e, 'Merge family dry run failed');
+        }
+    }
+
+    /**
+     * Execute family merge
+     * POST /import/mumineen/merge-family/execute
+     */
+    public function mergeFamilyExecute(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'external_family_id' => 'required|integer',
+                'current_family_id' => 'required|integer',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $externalFamilyId = (int) $request->input('external_family_id');
+            $currentFamilyId = (int) $request->input('current_family_id');
+
+            // Validate both families exist and are HOF
+            $externalHof = MumineenModel::where('family_id', $externalFamilyId)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            $currentHof = MumineenModel::where('family_id', $currentFamilyId)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            if (!$externalHof) {
+                return $this->error('External family not found or not a HOF', 404);
+            }
+
+            if (!$currentHof) {
+                return $this->error('Current family not found or not a HOF', 404);
+            }
+
+            if (!$externalHof->external) {
+                return $this->error('External family must have external = true', 422);
+            }
+
+            if ($externalFamilyId === $currentFamilyId) {
+                return $this->error('External family ID and current family ID cannot be the same', 422);
+            }
+
+            // Create log entry
+            $log = ImportLogModel::create([
+                'operation_type' => 'merge_family_execute',
+                'file_name' => "Merge {$externalFamilyId} to {$currentFamilyId}",
+                'status' => 'processing',
+                'user_id' => auth()->check() ? auth()->id() : null,
+            ]);
+
+            try {
+                DB::beginTransaction();
+
+                // Count records before update
+                $receiptsCount = ReceiptModel::where('family_id', $externalFamilyId)->count();
+                $sabeelCount = MumineenSabeelModel::where('family_id', $externalFamilyId)->count();
+                $establishmentCount = MumineenEstablishmentModel::where('family_id', $externalFamilyId)->count();
+                $mumineenCount = MumineenModel::where('family_id', $externalFamilyId)->count();
+
+                // 1. Update receipts table
+                ReceiptModel::where('family_id', $externalFamilyId)
+                    ->update(['family_id' => $currentFamilyId]);
+
+                // 2. Update sabeel table
+                MumineenSabeelModel::where('family_id', $externalFamilyId)
+                    ->update(['family_id' => $currentFamilyId]);
+
+                // 3. Update establishment mapping table
+                MumineenEstablishmentModel::where('family_id', $externalFamilyId)
+                    ->update(['family_id' => $currentFamilyId]);
+
+                // 4. Delete all mumineen records with external_family_id
+                MumineenModel::where('family_id', $externalFamilyId)->delete();
+
+                DB::commit();
+
+                // Update log
+                $log->update([
+                    'status' => 'completed',
+                    'total_records' => $mumineenCount,
+                    'details' => [
+                        'external_family_id' => $externalFamilyId,
+                        'current_family_id' => $currentFamilyId,
+                        'external_hof_name' => $externalHof->name,
+                        'external_hof_its' => $externalHof->its,
+                        'current_hof_name' => $currentHof->name,
+                        'current_hof_its' => $currentHof->its,
+                        'receipts_updated' => $receiptsCount,
+                        'sabeel_updated' => $sabeelCount,
+                        'establishment_updated' => $establishmentCount,
+                        'mumineen_deleted' => $mumineenCount,
+                    ],
+                ]);
+
+                return $this->success('Family merge completed successfully', [
+                    'log_id' => $log->id,
+                    'external_family_id' => $externalFamilyId,
+                    'current_family_id' => $currentFamilyId,
+                    'summary' => [
+                        'receipts_updated' => $receiptsCount,
+                        'sabeel_updated' => $sabeelCount,
+                        'establishment_updated' => $establishmentCount,
+                        'mumineen_deleted' => $mumineenCount,
+                        'total_records_affected' => $receiptsCount + $sabeelCount + $establishmentCount + $mumineenCount,
+                    ],
+                ], 200);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $log->update([
+                    'status' => 'failed',
+                    'error_log' => [['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]],
+                    'errors' => 1,
+                ]);
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('Merge family execute failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            if (config('app.debug')) {
+                return $this->error('Merge family execute failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500);
+            }
+
+            return $this->serverError($e, 'Merge family execute failed');
         }
     }
 }
