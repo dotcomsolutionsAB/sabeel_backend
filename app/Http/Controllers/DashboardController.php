@@ -142,7 +142,7 @@ class DashboardController extends Controller
                     'having_prev_due'      => (string) $havingPrevDue,
                     'new_takhmeen_pending' => (string) $newTakhmeenPending,
                     'establishment_missing'=> (string) $establishmentMissing,
-                    'service'              => '',
+                    'external_families'    => (string) $externalHouses,
                 ],
                 'establishment' => [
                     'total_establishment'  => (string) $totalEstablishment,

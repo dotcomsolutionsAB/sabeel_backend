@@ -90,7 +90,7 @@ class MumineenController extends Controller
      * {
      *   "search": "",
      *   "sector": "",
-     *   "filter": "due|prev_due|new_takhmeen_pending|not_tagged|service",
+     *   "filter": "due|prev_due|new_takhmeen_pending|not_tagged|external",
      *   "limit": 10,
      *   "offset": 0
      * }
@@ -751,10 +751,8 @@ class MumineenController extends Controller
             });
         }
 
-        if ($filter === 'service') {
-            return $q->whereIn('family_id', function($sub){
-                $sub->from('t_mumineen_establishment')->select('family_id');
-            });
+        if ($filter === 'external') {
+            return $q->where('external', true);
         }
 
         if ($filter === 'new_takhmeen_pending') {
