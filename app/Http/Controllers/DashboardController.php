@@ -178,7 +178,7 @@ class DashboardController extends Controller
             }
 
             $data = $rows->map(fn ($r) => [
-                'year' => $r->year . '-' . substr((string)($r->year + 1), -2),
+                'year' => $r->year,
                 'due'  => (string) $r->due,
             ]);
 
