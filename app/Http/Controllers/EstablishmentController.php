@@ -217,7 +217,7 @@ class EstablishmentController extends Controller
                     return $this->error('Sabeel entry not found for this establishment.', 404);
                 }
 
-                $focusYear = (int) $entry->year;
+                $focusYear = $entry->year; // Year is now a string
             }
 
             [$currentYear, $prevYear, $yearsList] = $this->resolveYearsForOverview($focusYear);
@@ -268,12 +268,13 @@ class EstablishmentController extends Controller
             $curSabeel = 0; $curDue = 0; $prevDue = 0;
 
             foreach ($yearsList as $yr) {
-                $sabeelAmt = (int) ($sabeelByYear->get($yr)->sabeel ?? 0);
+                $sabeelEntry = $sabeelByYear->get($yr);
+                $sabeelAmt = $sabeelEntry ? (int) $sabeelEntry->sabeel : 0;
                 $paid      = (float) ($paidByYear[$yr] ?? 0);
                 $due       = max(0, $sabeelAmt - $paid);
 
                 $sabeelDetails[] = [
-                    'year'   => $this->yearLabel($yr),
+                    'year'   => $yr, // Year is already a string like "2025-26"
                     'sabeel' => (string) $sabeelAmt,
                     'due'    => (string) $due,
                 ];
@@ -310,40 +311,57 @@ class EstablishmentController extends Controller
 
     /* ---------------- helpers for overview ---------------- */
 
-    private function resolveYearsForOverview(?int $focusYear = null): array
+    private function resolveYearsForOverview(?string $focusYear = null): array
     {
         // If focusYear passed, use it as current
         if ($focusYear) {
             $current = $focusYear;
-            return [$current, $current - 1, [$current, $current - 1, $current - 2]];
+            // Get previous year from database
+            $currentYearRecord = YearModel::where('year', $current)->first();
+            $prevYearRecord = YearModel::where('year', '<', $current)->orderBy('year', 'desc')->first();
+            $prev = $prevYearRecord ? $prevYearRecord->year : '';
+            
+            // Get top 3 years including focus year
+            $years = YearModel::orderBy('year', 'desc')->pluck('year')->take(3)->toArray();
+            if (count($years) < 3) {
+                $allYears = YearModel::orderBy('year', 'desc')->pluck('year')->toArray();
+                $years = array_slice($allYears, 0, 3);
+            }
+            if (!in_array($current, $years)) {
+                array_unshift($years, $current);
+                $years = array_slice($years, 0, 3);
+            }
+            
+            return [$current, $prev, $years];
         }
 
         // Else use t_year (if exists), fallback to system year
         if (!Schema::hasTable('t_year')) {
-            $current = (int) date('Y');
-            return [$current, $current - 1, [$current, $current - 1, $current - 2]];
+            $currentYearInt = (int) date('Y');
+            $current = (string) $currentYearInt;
+            $prev = (string) ($currentYearInt - 1);
+            $prev2 = (string) ($currentYearInt - 2);
+            return [$current, $prev, [$current, $prev, $prev2]];
         }
 
-        $current = (int) YearModel::where('is_current', 1)->value('year');
-        if (!$current) $current = (int) YearModel::max('year');
-        if (!$current) $current = (int) date('Y');
+        $currentYearRecord = YearModel::where('is_current', 1)->first();
+        if (!$currentYearRecord) {
+            $currentYearRecord = YearModel::orderBy('year', 'desc')->first();
+        }
+        $current = $currentYearRecord ? $currentYearRecord->year : (string) date('Y');
 
-        // take top 3 years from table (fallback to 3-year window)
+        // Get previous year
+        $prevYearRecord = YearModel::where('year', '<', $current)->orderBy('year', 'desc')->first();
+        $prev = $prevYearRecord ? $prevYearRecord->year : '';
+
+        // take top 3 years from table
         $years = YearModel::orderBy('year', 'desc')->pluck('year')->take(3)->toArray();
         if (count($years) < 3) {
-            $years = [$current, $current - 1, $current - 2];
+            $allYears = YearModel::orderBy('year', 'desc')->pluck('year')->toArray();
+            $years = array_slice($allYears, 0, 3);
         }
 
-        $prev = collect($years)->filter(fn($y) => $y < $current)->first();
-        $prev = $prev ? (int)$prev : ($current - 1);
-
         return [$current, $prev, $years];
-    }
-
-    private function yearLabel(int $year): string
-    {
-        $next = substr((string)($year + 1), -2);
-        return "{$year}-{$next}";
     }
 
     /* ---------------- Helpers ---------------- */
@@ -361,21 +379,24 @@ class EstablishmentController extends Controller
     {
         // safe fallback if t_year missing
         if (!Schema::hasTable('t_year')) {
-            $cur = (int) date('Y');
-            return [$cur, $cur - 1];
+            $cur = (string) date('Y');
+            $prev = (string) (date('Y') - 1);
+            return [$cur, $prev];
         }
 
-        $cur = (int) YearModel::where('is_current', 1)->value('year');
-        if (!$cur) $cur = (int) YearModel::max('year');
-        if (!$cur) $cur = (int) date('Y');
+        $currentYearRecord = YearModel::where('is_current', 1)->first();
+        if (!$currentYearRecord) {
+            $currentYearRecord = YearModel::orderBy('year', 'desc')->first();
+        }
+        $cur = $currentYearRecord ? $currentYearRecord->year : (string) date('Y');
 
-        $prev = (int) YearModel::where('year', '<', $cur)->max('year');
-        if (!$prev) $prev = $cur - 1;
+        $prevYearRecord = YearModel::where('year', '<', $cur)->orderBy('year', 'desc')->first();
+        $prev = $prevYearRecord ? $prevYearRecord->year : '';
 
         return [$cur, $prev];
     }
 
-    private function applyFilter($q, string $filter, int $currentYear, int $prevYear)
+    private function applyFilter($q, string $filter, string $currentYear, string $prevYear)
     {
         // manufacturer
         if ($filter === 'manufacturer') {
@@ -419,7 +440,7 @@ class EstablishmentController extends Controller
         return $q;
     }
 
-    private function buildPayload($rows, int $currentYear, int $prevYear): array
+    private function buildPayload($rows, string $currentYear, string $prevYear): array
     {
         $estIds = collect($rows)
             ->pluck('establishment_id')   // ✅ 10-digit business key
