@@ -331,11 +331,14 @@ class MumineenController extends Controller
         try {
             $familyId = (int) $family_id;
 
-            // Fetch only FMs (Family Members) for this family_id, ordered by age
+            // Fetch only FMs (Family Members) for this family_id
+            // Order by family_its groups (highest age in group first), then age DESC within each group
             $members = MumineenModel::where('family_id', $familyId)
                 ->where('hof_type', 'FM')
                 ->where('status', 'active')
-                ->orderBy('age', 'asc')
+                ->orderByRaw('(SELECT MAX(age) FROM t_mumineen AS m2 WHERE m2.family_its = t_mumineen.family_its AND m2.family_id = ' . $familyId . ' AND m2.hof_type = \'FM\' AND m2.status = \'active\') DESC')
+                ->orderBy('family_its', 'asc')
+                ->orderBy('age', 'desc')
                 ->get();
 
             if ($members->isEmpty()) {
