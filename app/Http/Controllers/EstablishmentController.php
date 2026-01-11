@@ -175,12 +175,12 @@ class EstablishmentController extends Controller
 
     /**
      * DELETE
-     * DELETE /establishment/delete/{id}
+     * DELETE /establishment/delete/{establishment_id}
      */
-    public function delete($id)
+    public function delete($establishment_id)
     {
         try {
-            $est = EstablishmentModel::find($id);
+            $est = EstablishmentModel::where('establishment_id', (string)$establishment_id)->first();
             if (!$est) {
                 return $this->error('Establishment not found.', 404);
             }

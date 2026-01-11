@@ -71,7 +71,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/create', [EstablishmentController::class, 'create']);
         Route::post('/retrieve/{id?}', [EstablishmentController::class, 'fetch']);
         Route::post('/update/{establishment_id}', [EstablishmentController::class, 'edit']);
-        Route::delete('/delete/{id}', [EstablishmentController::class, 'delete']);
+        Route::delete('/delete/{establishment_id}', [EstablishmentController::class, 'delete']);
     });
 
     // establishment-partner route
