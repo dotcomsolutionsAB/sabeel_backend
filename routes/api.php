@@ -15,6 +15,7 @@ use App\Http\Controllers\YearController;
 use App\Http\Controllers\MumineenEstablishmentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MigrateController;
+use App\Http\Controllers\ImportController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -134,4 +135,11 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::post('/migrate/mumineen', [MigrateController::class, 'syncMumineen']);
     Route::post('/migrate/establishment', [MigrateController::class, 'syncEstablishment']);
     Route::post('/migrate/receipts', [MigrateController::class, 'syncReceipts']);
+
+    // import route
+    Route::post('/import/mumineen/dry-run', [ImportController::class, 'dryRun']);
+    Route::post('/import/mumineen/execute', [ImportController::class, 'execute']);
+    
+    // import log route
+    Route::post('/import/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);
 });
