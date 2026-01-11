@@ -204,7 +204,6 @@ class ReceiptController extends Controller
             $type = $request->input('type');
 
             $q = ReceiptModel::query()
-                ->where('status', 'active')
                 ->orderBy('id', 'desc');
 
             // Adjust the query based on the `type`
@@ -589,6 +588,7 @@ $mpdf = new \Mpdf\Mpdf([
             'id'         => (string) $r->id,
             'receipt_no' => (string) $r->receipt_no,
             'date'       => (string) optional($r->date)->format('Y-m-d'),
+            'status'     => (string) $r->status,
             'year'       => (string) $r->year,
 
             'name' => (string) ($r->name ?? ''),
