@@ -442,13 +442,35 @@ class MigrateController extends Controller
                         $chequeDate = null;
                         $ifsc = null;
 
+                        // Get and validate receipt date for fallback
+                        $receiptDateValue = $item['date'] ?? null;
+                        $receiptDate = now()->toDateString(); // Default fallback
+                        if (!empty($receiptDateValue) && strtotime($receiptDateValue) !== false) {
+                            $parsedReceiptDate = date('Y-m-d', strtotime($receiptDateValue));
+                            if ($parsedReceiptDate >= '1900-01-01') {
+                                $receiptDate = $parsedReceiptDate;
+                            }
+                        }
+
                         if (is_array($paymentDetails)) {
                             // For UPI/NEFT
                             if (isset($paymentDetails['transaction_id'])) {
                                 $transactionNo = !empty($paymentDetails['transaction_id']) ? (string) $paymentDetails['transaction_id'] : null;
                             }
                             if (isset($paymentDetails['transaction_date'])) {
-                                $transactionDate = !empty($paymentDetails['transaction_date']) ? $paymentDetails['transaction_date'] : null;
+                                $transactionDateValue = $paymentDetails['transaction_date'];
+                                // Validate transaction_date
+                                if (!empty($transactionDateValue) && strtotime($transactionDateValue) !== false) {
+                                    $parsedDate = date('Y-m-d', strtotime($transactionDateValue));
+                                    // Check if date is valid (not before 1900)
+                                    if ($parsedDate >= '1900-01-01') {
+                                        $transactionDate = $parsedDate;
+                                    } else {
+                                        $transactionDate = $receiptDate;
+                                    }
+                                } else {
+                                    $transactionDate = $receiptDate;
+                                }
                             }
                             
                             // For Cheque
@@ -459,11 +481,28 @@ class MigrateController extends Controller
                                 $chequeNo = !empty($paymentDetails['cheque_no']) ? (string) $paymentDetails['cheque_no'] : null;
                             }
                             if (isset($paymentDetails['cheque_date'])) {
-                                $chequeDate = !empty($paymentDetails['cheque_date']) ? $paymentDetails['cheque_date'] : null;
+                                $chequeDateValue = $paymentDetails['cheque_date'];
+                                // Validate cheque_date
+                                if (!empty($chequeDateValue) && strtotime($chequeDateValue) !== false) {
+                                    $parsedDate = date('Y-m-d', strtotime($chequeDateValue));
+                                    // Check if date is valid (not before 1900)
+                                    if ($parsedDate >= '1900-01-01') {
+                                        $chequeDate = $parsedDate;
+                                    } else {
+                                        $chequeDate = $receiptDate;
+                                    }
+                                } else {
+                                    $chequeDate = $receiptDate;
+                                }
                             }
                             if (isset($paymentDetails['bank_ifsc'])) {
                                 $ifsc = !empty($paymentDetails['bank_ifsc']) ? (string) $paymentDetails['bank_ifsc'] : null;
                             }
+                        }
+
+                        // If mode is cheque and cheque_date is not set, use receipt date
+                        if ($mode === 'cheque' && empty($chequeDate)) {
+                            $chequeDate = $receiptDate;
                         }
 
                         // Update or create receipt record (using receipt_no as unique key)
@@ -472,7 +511,7 @@ class MigrateController extends Controller
                             [
                                 'family_id'        => $familyId,
                                 'establishment_id' => $establishmentId,
-                                'date'             => $item['date'] ?? now()->toDateString(),
+                                'date'             => $receiptDate,
                                 'deposit_id'       => 1, // Default deposit_id (required field)
                                 'name'             => $item['name'] ?? '',
                                 'its'              => $its,
