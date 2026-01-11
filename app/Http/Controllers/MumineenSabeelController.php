@@ -36,7 +36,7 @@ class MumineenSabeelController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'year'   => 'required|integer|min:2000|max:2100',
+                'year'   => 'required|string|max:10',
                 'amount' => 'required|integer|min:0',
             ]);
 
@@ -55,7 +55,7 @@ class MumineenSabeelController extends Controller
 
             $row = MumineenSabeelModel::create([
                 'family_id'  => (int) $family_id,
-                'year'       => (int) $request->year,
+                'year'       => $request->year,
                 'sabeel'     => (int) $request->amount,
                 'updated_by' => (int) Auth::id(),
             ]);
@@ -127,7 +127,7 @@ class MumineenSabeelController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'year'   => 'required|integer|min:2000|max:2100',
+                'year'   => 'required|string|max:10',
                 'amount' => 'required|integer|min:0',
             ]);
 
@@ -145,7 +145,7 @@ class MumineenSabeelController extends Controller
                 return $this->error('Another entry already exists for this family and year.', 409);
             }
 
-            $row->year = (int) $request->year;
+            $row->year = $request->year;
             $row->sabeel = (int) $request->amount;
             $row->updated_by = (int) Auth::id();
             $row->save();

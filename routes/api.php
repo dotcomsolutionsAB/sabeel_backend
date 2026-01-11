@@ -14,6 +14,7 @@ use App\Http\Controllers\DepositsController;
 use App\Http\Controllers\YearController;
 use App\Http\Controllers\MumineenEstablishmentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\MigrateController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -127,4 +128,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // migrate route
+    Route::post('/migrate/year', [MigrateController::class, 'syncYear']);
 });

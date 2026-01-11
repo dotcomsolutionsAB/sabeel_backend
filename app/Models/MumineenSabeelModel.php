@@ -19,7 +19,6 @@ class MumineenSabeelModel extends Model
 
     protected $casts = [
         'family_id'  => 'integer',
-        'year'       => 'integer',
         'sabeel'     => 'integer',
         'updated_by' => 'integer',
     ];

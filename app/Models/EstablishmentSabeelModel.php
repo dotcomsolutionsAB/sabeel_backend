@@ -19,7 +19,6 @@ class EstablishmentSabeelModel extends Model
 
     protected $casts = [
         'establishment_id' => 'integer',
-        'year'             => 'integer',
         'sabeel'           => 'integer',
         'updated_by'       => 'integer',
     ];

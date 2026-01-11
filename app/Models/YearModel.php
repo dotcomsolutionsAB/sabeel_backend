@@ -15,7 +15,6 @@ class YearModel extends Model
     ];
 
     protected $casts = [
-        'year'       => 'integer',
         'is_current' => 'boolean',
     ];
 }

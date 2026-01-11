@@ -39,7 +39,6 @@ class ReceiptModel extends Model
         'transaction_date'  => 'date',
         'cheque_date'       => 'date',
         'amount'            => 'decimal:2',
-        'year'              => 'integer',
         'updated_by'        => 'integer',
     ];
 

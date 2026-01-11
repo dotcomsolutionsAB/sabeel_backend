@@ -55,7 +55,7 @@ class ReceiptController extends Controller
                 'family_id'        => 'required_if:type,family|nullable|integer',
                 'establishment_id' => 'required_if:type,establishment|nullable|integer',
 
-                'year'   => 'required|integer|min:2000|max:2100',
+                'year'   => 'required|string|max:10',
                 'mode'   => 'required|in:cash,cheque,neft',
                 'amount' => 'required|numeric|min:0',
 
@@ -109,7 +109,7 @@ class ReceiptController extends Controller
 
             // Optional: validate year exists in t_year
             if (Schema::hasTable('t_year')) {
-                $existsYear = YearModel::where('year', (int)$request->year)->exists();
+                $existsYear = YearModel::where('year', $request->year)->exists();
                 if (!$existsYear) {
                     return $this->error('Invalid year. Year not found in master.', 422);
                 }
@@ -139,7 +139,7 @@ class ReceiptController extends Controller
                 'ifsc'       => $request->ifsc ?? null,
 
                 'amount' => $request->amount,
-                'year'   => (int) $request->year,
+                'year'   => $request->year,
 
                 'comment' => $request->remarks ?? null,
                 'status'  => 'active',

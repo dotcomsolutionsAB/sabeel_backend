@@ -65,7 +65,8 @@ class UserController extends Controller
             $role = trim((string) $request->input('role', ''));
 
             $q = User::select('id','name','email','username','role','created_at')
-                ->orderBy('id','desc');
+                ->orderByRaw("CASE WHEN role = 'admin' THEN 1 WHEN role = 'user' THEN 2 ELSE 3 END")
+                ->orderBy('name', 'asc')
 
             if ($search !== '') {
                 $q->where(function ($w) use ($search) {
