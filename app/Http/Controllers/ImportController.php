@@ -798,6 +798,16 @@ class ImportController extends Controller
             }
         }
 
+        // Log for debugging
+        $result['details'][] = [
+            'type' => 'sync_fm_debug',
+            'family_id' => $familyId,
+            'existing_fm_count' => count($existingFms),
+            'excel_fm_count' => count($excelFms),
+            'existing_fm_its' => array_keys($existingFms->toArray()),
+            'excel_fm_its' => array_keys($excelFms),
+        ];
+
         // Add new FMs
         foreach ($excelFms as $its => $memberRow) {
             if (!isset($existingFms[$its])) {
@@ -805,13 +815,30 @@ class ImportController extends Controller
                     $this->createFamilyMember($memberRow, $columnMap, $familyId);
                     $result['fm_added']++;
                     $result['fm_synced']++;
+                    
+                    // Log successful creation
+                    $result['details'][] = [
+                        'type' => 'fm_created',
+                        'family_id' => $familyId,
+                        'its' => $its,
+                        'name' => $this->getValue($memberRow, $columnMap, 'full_name'),
+                    ];
                 } catch (\Exception $e) {
                     // Log error if FM creation fails (e.g., duplicate ITS constraint)
                     $result['errors'][] = [
                         'family_id' => $familyId,
                         'its' => $its,
                         'message' => 'Failed to create FM: ' . $e->getMessage(),
+                        'trace' => substr($e->getTraceAsString(), 0, 500), // Limit trace length
                     ];
+                    
+                    // Also log to Laravel log
+                    Log::error('FM creation failed', [
+                        'family_id' => $familyId,
+                        'its' => $its,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
                 }
             } else {
                 // Update existing FM
@@ -856,23 +883,42 @@ class ImportController extends Controller
         $age = ($age && $age !== '' && $age !== '0') ? (int) $age : null;
         $picUrl = url('storage/uploads/its_images/placeholder.jpg');
 
-        // Let database handle unique constraint - if ITS already exists, it will throw an exception
-        MumineenModel::create([
-            'family_id' => $familyId,
-            'hof_type' => 'FM',
-            'its' => $its,
-            'hof_its' => null,
-            'family_its' => null,
-            'name' => $name,
-            'sector' => $sector,
-            'sub_sector' => $subSector,
-            'mobile' => $mobile,
-            'email' => $email,
-            'gender' => $gender,
-            'age' => $age,
-            'pic' => $picUrl,
-            'status' => 'active',
-        ]);
+        // Check if ITS already exists globally before attempting to create
+        $existingRecord = MumineenModel::where('its', $its)->first();
+        if ($existingRecord) {
+            throw new \Exception("ITS {$its} already exists in database (as {$existingRecord->hof_type}, family_id: {$existingRecord->family_id})");
+        }
+
+        try {
+            // Create the FM record
+            MumineenModel::create([
+                'family_id' => $familyId,
+                'hof_type' => 'FM',
+                'its' => $its,
+                'hof_its' => null,
+                'family_its' => null,
+                'name' => $name,
+                'sector' => $sector,
+                'sub_sector' => $subSector,
+                'mobile' => $mobile,
+                'email' => $email,
+                'gender' => $gender,
+                'age' => $age,
+                'pic' => $picUrl,
+                'status' => 'active',
+            ]);
+        } catch (\Exception $e) {
+            // Log the actual database error
+            Log::error('FM create database error', [
+                'family_id' => $familyId,
+                'its' => $its,
+                'name' => $name,
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
     /**
