@@ -293,6 +293,8 @@ class ImportController extends Controller
             'hof_fm_type' => ['hof_fm_type', 'hof_fmtype', 'hof/fm_type', 'type'],
             'hof_id' => ['hof_id', 'hofid', 'hof id'],
             'family_id' => ['family_id', 'familyid', 'family'],
+            'hof_its' => ['hof_its', 'hofits', 'hof its'],
+            'family_its' => ['family_its', 'familyits', 'family its'],
             'full_name' => ['full_name', 'fullname', 'name'],
             'sector' => ['sector'],
             'sub_sector' => ['sub_sector', 'subsector', 'sub sector'],
@@ -724,6 +726,16 @@ class ImportController extends Controller
             $updates['age'] = (int) $age;
         }
 
+        $hofIts = $this->getValue($hofRow, $columnMap, 'hof_its');
+        if ($hofIts !== null) {
+            $updates['hof_its'] = $hofIts;
+        }
+
+        $familyIts = $this->getValue($hofRow, $columnMap, 'family_its');
+        if ($familyIts !== null) {
+            $updates['family_its'] = $familyIts;
+        }
+
         if (!empty($updates)) {
             $hof->update($updates);
         }
@@ -764,12 +776,15 @@ class ImportController extends Controller
         $age = ($age && $age !== '' && $age !== '0') ? (int) $age : null;
         $picUrl = url('storage/uploads/its_images/placeholder.jpg');
 
+        $hofIts = $this->getValue($hofRow, $columnMap, 'hof_its');
+        $familyIts = $this->getValue($hofRow, $columnMap, 'family_its');
+
         return MumineenModel::create([
             'family_id' => $familyId,
             'hof_type' => 'HOF',
             'its' => $its,
-            'hof_its' => null,
-            'family_its' => null,
+            'hof_its' => $hofIts,
+            'family_its' => $familyIts,
             'name' => $name,
             'sector' => $sector,
             'sub_sector' => $subSector,
@@ -788,6 +803,12 @@ class ImportController extends Controller
      */
     private function syncFamilyMembers(int $familyId, array $members, array $columnMap, array &$result): void
     {
+        // Get HOF ITS for this family (to set hof_its for FMs)
+        $hof = MumineenModel::where('family_id', $familyId)
+            ->where('hof_type', 'HOF')
+            ->first();
+        $hofIts = $hof ? $hof->its : null;
+
         // Get existing FMs
         $existingFms = MumineenModel::where('family_id', $familyId)
             ->where('hof_type', 'FM')
@@ -820,7 +841,7 @@ class ImportController extends Controller
         foreach ($excelFms as $its => $memberRow) {
             if (!isset($existingFms[$its])) {
                 try {
-                    $this->createFamilyMember($memberRow, $columnMap, $familyId);
+                    $this->createFamilyMember($memberRow, $columnMap, $familyId, $hofIts);
                     $result['fm_added']++;
                     $result['fm_synced']++;
                     
@@ -850,7 +871,7 @@ class ImportController extends Controller
                 }
             } else {
                 // Update existing FM
-                $this->updateFamilyMember($existingFms[$its], $memberRow, $columnMap);
+                $this->updateFamilyMember($existingFms[$its], $memberRow, $columnMap, $hofIts);
             }
         }
 
@@ -867,7 +888,7 @@ class ImportController extends Controller
     /**
      * Create family member
      */
-    private function createFamilyMember(array $memberRow, array $columnMap, int $familyId): void
+    private function createFamilyMember(array $memberRow, array $columnMap, int $familyId, ?string $hofIts = null): void
     {
         $name = $this->getValue($memberRow, $columnMap, 'full_name') ?? '';
         $its = $this->getValue($memberRow, $columnMap, 'its_id') ?? '';
@@ -891,6 +912,14 @@ class ImportController extends Controller
         $age = ($age && $age !== '' && $age !== '0') ? (int) $age : null;
         $picUrl = url('storage/uploads/its_images/placeholder.jpg');
 
+        // Get hof_its and family_its from Excel or use HOF ITS
+        $memberHofIts = $this->getValue($memberRow, $columnMap, 'hof_its');
+        $memberFamilyIts = $this->getValue($memberRow, $columnMap, 'family_its');
+        
+        // Use Excel value if provided, otherwise use HOF ITS for hof_its
+        $finalHofIts = $memberHofIts !== null ? $memberHofIts : $hofIts;
+        $finalFamilyIts = $memberFamilyIts;
+
         // Check if ITS already exists globally before attempting to create
         $existingRecord = MumineenModel::where('its', $its)->first();
         if ($existingRecord) {
@@ -903,8 +932,8 @@ class ImportController extends Controller
                 'family_id' => $familyId,
                 'hof_type' => 'FM',
                 'its' => $its,
-                'hof_its' => null,
-                'family_its' => null,
+                'hof_its' => $finalHofIts,
+                'family_its' => $finalFamilyIts,
                 'name' => $name,
                 'sector' => $sector,
                 'sub_sector' => $subSector,
@@ -932,7 +961,7 @@ class ImportController extends Controller
     /**
      * Update family member
      */
-    private function updateFamilyMember(MumineenModel $fm, array $memberRow, array $columnMap): void
+    private function updateFamilyMember(MumineenModel $fm, array $memberRow, array $columnMap, ?string $hofIts = null): void
     {
         $updates = [];
 
@@ -969,6 +998,19 @@ class ImportController extends Controller
         $age = $this->getValue($memberRow, $columnMap, 'age');
         if ($age !== null && $age !== '' && $age !== '0') {
             $updates['age'] = (int) $age;
+        }
+
+        $memberHofIts = $this->getValue($memberRow, $columnMap, 'hof_its');
+        if ($memberHofIts !== null) {
+            $updates['hof_its'] = $memberHofIts;
+        } elseif ($hofIts !== null) {
+            // If not in Excel but we have HOF ITS, use it
+            $updates['hof_its'] = $hofIts;
+        }
+
+        $familyIts = $this->getValue($memberRow, $columnMap, 'family_its');
+        if ($familyIts !== null) {
+            $updates['family_its'] = $familyIts;
         }
 
         if (!empty($updates)) {
