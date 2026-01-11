@@ -18,6 +18,7 @@ class ReceiptModel extends Model
         'deposit_id',
         'name',
         'its',
+        'type',
         'mode',
         'transaction_no',
         'transaction_date',

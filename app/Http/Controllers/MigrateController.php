@@ -409,13 +409,19 @@ class MigrateController extends Controller
                         }
 
                         // Map type: PERSONAL = family, ESTABLISHMENT = establishment
-                        $type = strtoupper($item['type'] ?? 'PERSONAL');
+                        $apiType = strtoupper($item['type'] ?? 'PERSONAL');
                         $familyId = null;
                         $establishmentId = null;
                         
+                        // Map API type to database type field
+                        $dbType = 'family'; // default
+                        if ($apiType === 'ESTABLISHMENT') {
+                            $dbType = 'establishment';
+                        }
+                        
                         $apiFamilyId = !empty($item['family_id']) ? (int) $item['family_id'] : 0;
                         
-                        if ($type === 'ESTABLISHMENT') {
+                        if ($apiType === 'ESTABLISHMENT') {
                             // For ESTABLISHMENT type, store in establishment_id
                             $establishmentId = $apiFamilyId > 0 ? $apiFamilyId : null;
                             $familyId = null; // Ensure family_id is null for establishments
@@ -427,7 +433,7 @@ class MigrateController extends Controller
 
                         // Process ITS (only for PERSONAL type, and not "0" or "Array")
                         $its = null;
-                        if ($type === 'PERSONAL' && !empty($item['its'])) {
+                        if ($apiType === 'PERSONAL' && !empty($item['its'])) {
                             $itsValue = (string) $item['its'];
                             if ($itsValue !== '0' && $itsValue !== 'Array' && !empty($itsValue)) {
                                 $its = $itsValue;
@@ -519,6 +525,7 @@ class MigrateController extends Controller
                                 'deposit_id'       => 1, // Default deposit_id (required field)
                                 'name'             => $item['name'] ?? '',
                                 'its'              => $its,
+                                'type'             => $dbType,
                                 'mode'             => $mode,
                                 'transaction_no'   => $transactionNo,
                                 'transaction_date' => $transactionDate,
