@@ -201,19 +201,20 @@ class ReceiptController extends Controller
             $limit  = max(1, (int) $request->input('limit', 10));
             $offset = max(0, (int) $request->input('offset', 0));
 
-            $type = $request->type;
+            $type = $request->input('type');
 
             $q = ReceiptModel::query()
                 ->where('status', 'active')
                 ->orderBy('id', 'desc');
 
             // Adjust the query based on the `type`
+            // If no type is passed, return both family and establishment receipts
             if ($type === 'family') {
                 $q->whereNotNull('family_id');
             } elseif ($type === 'establishment') {
                 $q->whereNotNull('establishment_id');
             } else {
-                // If `type` is null, include both family and establishment
+                // If `type` is null or not provided, include both family and establishment receipts
                 $q->where(function($query) {
                     $query->whereNotNull('family_id')
                         ->orWhereNotNull('establishment_id');
