@@ -162,6 +162,7 @@ class ReceiptController extends Controller
      *   "type":"family|establishment",
      *   "family_id": null,
      *   "establishment_id": null,
+     *   "mode": "cash|cheque|neft",
      *   "date_from":"YYYY-MM-DD",
      *   "date_to":"YYYY-MM-DD",
      *   "limit":10,
@@ -186,6 +187,8 @@ class ReceiptController extends Controller
 
                 'family_id'        => 'nullable|integer',
                 'establishment_id' => 'nullable|integer',
+
+                'mode' => 'nullable|in:cash,cheque,neft',
 
                 'date_from' => 'nullable|date',
                 'date_to'   => 'nullable|date',
@@ -226,6 +229,10 @@ class ReceiptController extends Controller
 
             if ($request->filled('establishment_id')) {
                 $q->where('establishment_id', (int)$request->establishment_id);
+            }
+
+            if ($request->filled('mode')) {
+                $q->where('mode', $request->mode);
             }
 
             if ($request->filled('date_from')) {
