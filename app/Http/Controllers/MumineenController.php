@@ -136,6 +136,7 @@ class MumineenController extends Controller
                     WHEN sector = 'ZAINY' THEN 5 
                     ELSE 6 
                 END")
+                ->orderBy('sub_sector', 'asc')
                 ->orderBy('name', 'asc');
 
             // search in name, its, sector, and also family member its numbers
@@ -396,6 +397,7 @@ class MumineenController extends Controller
                     WHEN sector = 'ZAINY' THEN 5 
                     ELSE 6 
                 END")
+                ->orderBy('sub_sector', 'asc')
                 ->orderBy('name','asc');
 
 
