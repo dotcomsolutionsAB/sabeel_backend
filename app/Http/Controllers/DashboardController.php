@@ -228,9 +228,10 @@ class DashboardController extends Controller
             ============================================================ */
             if ($filter === 'family' || $filter === 'due_family') {
 
-                // Base: all HOF
+                // Base: all active HOF
                 $q = MumineenModel::query()
                     ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
                     ->select('id','family_id','its','name','sector','mobile','email')
                     ->orderBy('name', 'asc');
 
@@ -299,6 +300,11 @@ class DashboardController extends Controller
                         $paid   = (float) ($paidMap[$m->family_id] ?? 0);
                         $due    = max(0, $sabeel - $paid);
 
+                        // If filter is due_family, only export rows with due > 0
+                        if ($filter === 'due_family' && $due <= 0) {
+                            continue;
+                        }
+
                         $totalSabeel += $sabeel;
                         $totalPaid   += $paid;
                         $totalDue    += $due;
@@ -346,6 +352,11 @@ class DashboardController extends Controller
                             $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
                             $paid   = (float) ($paidEntry->paid ?? 0);
                             $due    = max(0, $sabeel - $paid);
+
+                            // If filter is due_family, only export rows with due > 0
+                            if ($filter === 'due_family' && $due <= 0) {
+                                continue;
+                            }
 
                             $totalSabeel += $sabeel;
                             $totalPaid   += $paid;
