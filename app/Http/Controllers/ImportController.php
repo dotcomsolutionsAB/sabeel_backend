@@ -243,6 +243,8 @@ class ImportController extends Controller
                         'sabeel_created' => $result['sabeel_created'],
                         'errors' => count($result['errors']),
                     ],
+                    'errors' => $result['errors'],
+                    'details' => $result['details'] ?? [],
                 ], 200);
 
             } catch (\Throwable $e) {
