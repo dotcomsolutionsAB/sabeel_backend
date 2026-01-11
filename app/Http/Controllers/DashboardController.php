@@ -51,26 +51,44 @@ class DashboardController extends Controller
                 ->distinct('family_id')
                 ->count('family_id');
 
-            $totalMumineenSabeel = MumineenSabeelModel::sum('sabeel');
-
-            $paidMumineen = ReceiptModel::whereNotNull('family_id')
+            // Get all active HOF family_ids
+            $activeHofFamilyIds = MumineenModel::where('hof_type', 'HOF')
                 ->where('status', 'active')
-                ->sum('amount');
+                ->distinct('family_id')
+                ->pluck('family_id')
+                ->all();
+
+            // Calculate total sabeel for active HOFs only
+            $totalMumineenSabeel = DB::table('t_mumineen_sabeel')
+                ->whereIn('family_id', $activeHofFamilyIds)
+                ->sum('sabeel');
+
+            // Calculate paid amount for active HOFs only (year-wise matching)
+            $paidMumineen = DB::table('t_mumineen_sabeel as s')
+                ->leftJoin('t_receipts as r', function ($q) {
+                    $q->on('s.family_id', '=', 'r.family_id')
+                    ->on('s.year', '=', 'r.year')
+                    ->where('r.status', 'active');
+                })
+                ->whereIn('s.family_id', $activeHofFamilyIds)
+                ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
+                ->value('paid') ?? 0;
 
             $dueMumineenSabeel = max(0, $totalMumineenSabeel - $paidMumineen);
 
+            // Count unique family_id that has due in any one year (year-wise matching)
             $dueHouses = DB::table('t_mumineen_sabeel as s')
                 ->leftJoin('t_receipts as r', function ($q) {
                     $q->on('s.family_id', '=', 'r.family_id')
+                    ->on('s.year', '=', 'r.year')
                     ->where('r.status', 'active');
                 })
-                ->select(
-                    's.family_id',
-                    DB::raw('SUM(r.amount) as paid'),
-                    DB::raw('MAX(s.sabeel) as sabeel')
-                )
-                ->groupBy('s.family_id')
+                ->whereIn('s.family_id', $activeHofFamilyIds)
+                ->select('s.family_id')
+                ->groupBy('s.family_id', 's.year')
                 ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
+                ->pluck('family_id')
+                ->unique()
                 ->count();
 
             $havingPrevDue = DB::table('t_mumineen_sabeel as s')
@@ -94,36 +112,52 @@ class DashboardController extends Controller
                       ->where('year', $currentYearStr);
                 })->count();
 
-            $establishmentMissing = MumineenModel::whereNotIn('family_id', function ($q) {
+            // Count unique family_id not tagged to any establishment (only active HOFs)
+            $establishmentMissing = MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->whereNotIn('family_id', function ($q) {
                     $q->select('family_id')
                       ->from('t_mumineen_establishment');
-                })->count();
+                })
+                ->distinct('family_id')
+                ->count('family_id');
 
             /* ================= ESTABLISHMENT ================= */
 
             $totalEstablishment = EstablishmentModel::count();
 
+            // Get all establishment IDs
+            $allEstablishmentIds = EstablishmentModel::pluck('establishment_id')->all();
+
+            // Calculate total sabeel for all establishments
             $totalEstSabeel = EstablishmentSabeelModel::sum('sabeel');
 
-            $paidEst = ReceiptModel::whereNotNull('establishment_id')
-                ->where('status', 'active')
-                ->sum('amount');
+            // Calculate paid amount for all establishments (year-wise matching)
+            $paidEst = DB::table('t_establishment_sabeel as s')
+                ->leftJoin('t_receipts as r', function ($q) {
+                    $q->on('s.establishment_id', '=', 'r.establishment_id')
+                    ->on('s.year', '=', 'r.year')
+                    ->where('r.status', 'active');
+                })
+                ->whereIn('s.establishment_id', $allEstablishmentIds)
+                ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
+                ->value('paid') ?? 0;
 
             $dueEstSabeel = max(0, $totalEstSabeel - $paidEst);
 
+            // Count establishments that have due in any one year (year-wise matching)
             $dueEstablishment = DB::table('t_establishment_sabeel as s')
                 ->leftJoin('t_receipts as r', function ($q) {
                     $q->on('s.establishment_id', '=', 'r.establishment_id')
+                    ->on('s.year', '=', 'r.year')
                     ->where('r.status', 'active');
                 })
-                ->select(
-                    's.establishment_id',
-                    DB::raw('SUM(r.amount) as paid'),
-                    DB::raw('MAX(s.sabeel) as sabeel')
-                )
-                ->groupBy('s.establishment_id')
+                ->whereIn('s.establishment_id', $allEstablishmentIds)
+                ->select('s.establishment_id')
+                ->groupBy('s.establishment_id', 's.year')
                 ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)')
-                ->count();
+                ->distinct('s.establishment_id')
+                ->count('s.establishment_id');
 
             $partnerNotTagged = EstablishmentModel::whereNotIn('establishment_id', function ($q) {
                     $q->select('establishment_id')
