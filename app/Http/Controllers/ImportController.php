@@ -70,7 +70,7 @@ class ImportController extends Controller
             // Map column indices
             $columnMap = $this->mapColumns($headers);
 
-            // Group rows by Family_ID (families)
+            // Group rows by HOF_ID (families)
             $families = $this->groupByFamily($data, $columnMap);
 
             // Analyze changes
@@ -284,6 +284,7 @@ class ImportController extends Controller
         $columnMappings = [
             'its_id' => ['its_id', 'itsid', 'its'],
             'hof_fm_type' => ['hof_fm_type', 'hof_fmtype', 'hof/fm_type', 'type'],
+            'hof_id' => ['hof_id', 'hofid', 'hof id'],
             'family_id' => ['family_id', 'familyid', 'family'],
             'full_name' => ['full_name', 'fullname', 'name'],
             'sector' => ['sector'],
@@ -313,27 +314,37 @@ class ImportController extends Controller
     }
 
     /**
-     * Group rows by family
+     * Group rows by family (using HOF_ID - all members of a family share the same HOF_ID)
      */
     private function groupByFamily(array $data, array $columnMap): array
     {
         $families = [];
         
         foreach ($data as $row) {
-            $familyId = $this->getValue($row, $columnMap, 'family_id') ?? '';
-            $hofType = strtoupper(trim($this->getValue($row, $columnMap, 'hof_fm_type') ?? ''));
+            // Use HOF_ID to group families - all family members (HOF and FM) share the same HOF_ID
+            $hofId = $this->getValue($row, $columnMap, 'hof_id') ?? '';
             
-            if (empty($familyId)) {
-                // If no Family_ID, use ITS_ID as temporary key (will be grouped by HOF later)
-                $its = $this->getValue($row, $columnMap, 'its_id') ?? '';
-                $familyId = $its;
+            if (empty($hofId)) {
+                // If no HOF_ID, skip this row (or use ITS_ID as fallback for HOF only)
+                $hofType = strtoupper(trim($this->getValue($row, $columnMap, 'hof_fm_type') ?? ''));
+                if ($hofType === 'HOF') {
+                    // For HOF without HOF_ID, use their own ITS_ID
+                    $its = $this->getValue($row, $columnMap, 'its_id') ?? '';
+                    if (!empty($its)) {
+                        $hofId = $its;
+                    } else {
+                        continue; // Skip invalid row
+                    }
+                } else {
+                    continue; // Skip FM without HOF_ID
+                }
             }
             
-            if (!isset($families[$familyId])) {
-                $families[$familyId] = [];
+            if (!isset($families[$hofId])) {
+                $families[$hofId] = [];
             }
             
-            $families[$familyId][] = $row;
+            $families[$hofId][] = $row;
         }
         
         return $families;
