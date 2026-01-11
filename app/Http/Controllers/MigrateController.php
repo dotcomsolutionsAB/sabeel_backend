@@ -9,6 +9,7 @@ use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
+use App\Models\ReceiptModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -356,6 +357,169 @@ class MigrateController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Establishment sync failed');
+        }
+    }
+
+    /**
+     * Sync receipts from external API
+     * URL: https://sabeel.kolkatajamaat.com/assets/custom/migrate/receipts.php
+     */
+    public function syncReceipts(Request $request)
+    {
+        try {
+            $url = 'https://sabeel.kolkatajamaat.com/assets/custom/migrate/receipts.php';
+            
+            // Fetch data from external API
+            $response = Http::timeout(120)->get($url);
+            
+            if (!$response->successful()) {
+                return $this->error('Failed to fetch data from external API', $response->status());
+            }
+
+            $data = $response->json();
+            
+            if (!isset($data['data']) || !is_array($data['data'])) {
+                return $this->error('Invalid response format from API', 422);
+            }
+
+            $receiptSynced = 0;
+            $skipped = 0;
+            $errors = [];
+
+            // Use transaction to ensure data consistency
+            DB::beginTransaction();
+
+            try {
+                foreach ($data['data'] as $index => $item) {
+                    try {
+                        $receiptNo = $item['rno'] ?? '';
+                        
+                        if (empty($receiptNo)) {
+                            $skipped++;
+                            continue; // Skip records without receipt_no
+                        }
+
+                        // Map payment_type to mode
+                        $paymentType = strtolower($item['payment_type'] ?? 'cash');
+                        $mode = 'cash'; // default
+                        if ($paymentType === 'cheque') {
+                            $mode = 'cheque';
+                        } elseif (in_array($paymentType, ['neft', 'upi'])) {
+                            $mode = 'neft'; // Map UPI to neft since enum doesn't have upi
+                        }
+
+                        // Map type: PERSONAL = family, ESTABLISHMENT = establishment
+                        $type = strtoupper($item['type'] ?? 'PERSONAL');
+                        $familyId = null;
+                        $establishmentId = null;
+                        
+                        $apiFamilyId = !empty($item['family_id']) ? (int) $item['family_id'] : 0;
+                        
+                        if ($type === 'PERSONAL') {
+                            $familyId = $apiFamilyId > 0 ? $apiFamilyId : null;
+                        } elseif ($type === 'ESTABLISHMENT') {
+                            $establishmentId = $apiFamilyId > 0 ? $apiFamilyId : null;
+                        }
+
+                        // Process ITS (only for PERSONAL type, and not "0" or "Array")
+                        $its = null;
+                        if ($type === 'PERSONAL' && !empty($item['its'])) {
+                            $itsValue = (string) $item['its'];
+                            if ($itsValue !== '0' && $itsValue !== 'Array' && !empty($itsValue)) {
+                                $its = $itsValue;
+                            }
+                        }
+
+                        // Map status: "0" = active, "1" = cancelled
+                        $status = ($item['status'] ?? '0') === '1' ? 'cancelled' : 'active';
+
+                        // Process payment_details
+                        $paymentDetails = $item['payment_details'] ?? null;
+                        $transactionNo = null;
+                        $transactionDate = null;
+                        $bank = null;
+                        $chequeNo = null;
+                        $chequeDate = null;
+                        $ifsc = null;
+
+                        if (is_array($paymentDetails)) {
+                            // For UPI/NEFT
+                            if (isset($paymentDetails['transaction_id'])) {
+                                $transactionNo = !empty($paymentDetails['transaction_id']) ? (string) $paymentDetails['transaction_id'] : null;
+                            }
+                            if (isset($paymentDetails['transaction_date'])) {
+                                $transactionDate = !empty($paymentDetails['transaction_date']) ? $paymentDetails['transaction_date'] : null;
+                            }
+                            
+                            // For Cheque
+                            if (isset($paymentDetails['bank_name'])) {
+                                $bank = !empty($paymentDetails['bank_name']) ? (string) $paymentDetails['bank_name'] : null;
+                            }
+                            if (isset($paymentDetails['cheque_no'])) {
+                                $chequeNo = !empty($paymentDetails['cheque_no']) ? (string) $paymentDetails['cheque_no'] : null;
+                            }
+                            if (isset($paymentDetails['cheque_date'])) {
+                                $chequeDate = !empty($paymentDetails['cheque_date']) ? $paymentDetails['cheque_date'] : null;
+                            }
+                            if (isset($paymentDetails['bank_ifsc'])) {
+                                $ifsc = !empty($paymentDetails['bank_ifsc']) ? (string) $paymentDetails['bank_ifsc'] : null;
+                            }
+                        }
+
+                        // Update or create receipt record (using receipt_no as unique key)
+                        ReceiptModel::updateOrCreate(
+                            ['receipt_no' => $receiptNo],
+                            [
+                                'family_id'        => $familyId,
+                                'establishment_id' => $establishmentId,
+                                'date'             => $item['date'] ?? now()->toDateString(),
+                                'deposit_id'       => 1, // Default deposit_id (required field)
+                                'name'             => $item['name'] ?? '',
+                                'its'              => $its,
+                                'mode'             => $mode,
+                                'transaction_no'   => $transactionNo,
+                                'transaction_date' => $transactionDate,
+                                'bank'             => $bank,
+                                'cheque_no'        => $chequeNo,
+                                'cheque_date'      => $chequeDate,
+                                'ifsc'             => $ifsc,
+                                'amount'           => !empty($item['amount']) ? (float) $item['amount'] : 0,
+                                'year'             => $item['year'] ?? '',
+                                'comment'          => !empty($item['comments']) ? $item['comments'] : null,
+                                'status'           => $status,
+                                'updated_by'       => auth()->check() ? auth()->id() : 1,
+                            ]
+                        );
+
+                        $receiptSynced++;
+
+                    } catch (\Exception $e) {
+                        // Log error for this record but continue processing
+                        $errors[] = [
+                            'index' => $index,
+                            'receipt_no' => $item['rno'] ?? 'N/A',
+                            'error' => $e->getMessage()
+                        ];
+                        $skipped++;
+                    }
+                }
+
+                DB::commit();
+
+                return $this->success('Receipts synced successfully', [
+                    'receipt_synced' => $receiptSynced,
+                    'skipped'        => $skipped,
+                    'total_records'  => count($data['data']),
+                    'errors'         => $errors
+                ], 200);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Receipt sync failed');
         }
     }
 }
