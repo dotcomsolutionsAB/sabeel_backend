@@ -132,4 +132,5 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     // migrate route
     Route::post('/migrate/year', [MigrateController::class, 'syncYear']);
     Route::post('/migrate/mumineen', [MigrateController::class, 'syncMumineen']);
+    Route::post('/migrate/establishment', [MigrateController::class, 'syncEstablishment']);
 });

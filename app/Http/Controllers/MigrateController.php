@@ -6,6 +6,9 @@ use App\Traits\ApiResponse;
 use App\Models\YearModel;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
+use App\Models\EstablishmentModel;
+use App\Models\EstablishmentSabeelModel;
+use App\Models\MumineenEstablishmentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -220,6 +223,139 @@ class MigrateController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Mumineen sync failed');
+        }
+    }
+
+    /**
+     * Sync establishments from external API
+     * URL: https://sabeel.kolkatajamaat.com/assets/custom/migrate/establishment.php
+     */
+    public function syncEstablishment(Request $request)
+    {
+        try {
+            $url = 'https://sabeel.kolkatajamaat.com/assets/custom/migrate/establishment.php';
+            
+            // Fetch data from external API
+            $response = Http::timeout(60)->get($url);
+            
+            if (!$response->successful()) {
+                return $this->error('Failed to fetch data from external API', $response->status());
+            }
+
+            $data = $response->json();
+            
+            if (!isset($data['data']) || !is_array($data['data'])) {
+                return $this->error('Invalid response format from API', 422);
+            }
+
+            $establishmentSynced = 0;
+            $sabeelSynced = 0;
+            $ownerMappingsSynced = 0;
+            $processedEstablishmentIds = [];
+
+            // Use transaction to ensure data consistency
+            DB::beginTransaction();
+
+            try {
+                foreach ($data['data'] as $item) {
+                    $establishmentId = (int) ($item['establishment_no'] ?? 0);
+                    
+                    if ($establishmentId <= 0) {
+                        continue; // Skip invalid establishment_id
+                    }
+
+                    // Process establishment record (only once per establishment_id)
+                    if (!isset($processedEstablishmentIds[$establishmentId])) {
+                        // Map type: "0" = business, "1" = manufacturer
+                        $type = ($item['type'] ?? '0') === '1' ? 'manufacturer' : 'business';
+
+                        // Map status: "0" = active, "1" = closed
+                        $status = ($item['status'] ?? '0') === '1' ? 'closed' : 'active';
+
+                        // Update or create establishment record
+                        EstablishmentModel::updateOrCreate(
+                            ['establishment_id' => $establishmentId],
+                            [
+                                'name'    => $item['name'] ?? '',
+                                'address' => $item['address'] ?? '',
+                                'status'  => $status,
+                                'type'    => $type,
+                                'remarks' => null, // Not in API data
+                            ]
+                        );
+
+                        // Process owner mappings (only once per establishment)
+                        $owners = $item['owners'] ?? [];
+                        if (is_array($owners) && !empty($owners)) {
+                            $updatedBy = auth()->check() ? auth()->id() : 1;
+
+                            foreach ($owners as $ownerIts) {
+                                if (empty($ownerIts)) {
+                                    continue; // Skip empty ITS
+                                }
+
+                                // Find mumineen by ITS
+                                $mumineen = MumineenModel::where('its', (string) $ownerIts)->first();
+                                
+                                if ($mumineen) {
+                                    // Create or update mapping (avoid duplicates)
+                                    MumineenEstablishmentModel::updateOrCreate(
+                                        [
+                                            'establishment_id' => $establishmentId,
+                                            'its'              => $mumineen->its,
+                                        ],
+                                        [
+                                            'family_id'  => $mumineen->family_id,
+                                            'updated_by' => $updatedBy,
+                                        ]
+                                    );
+                                    $ownerMappingsSynced++;
+                                }
+                            }
+                        }
+
+                        $processedEstablishmentIds[$establishmentId] = true;
+                        $establishmentSynced++;
+                    }
+
+                    // Process sabeel entry (for each year)
+                    $year = $item['year'] ?? '';
+                    $sabeel = !empty($item['sabeel']) ? (int) $item['sabeel'] : 0;
+
+                    if (!empty($year) && $sabeel >= 0) {
+                        $updatedBy = auth()->check() ? auth()->id() : 1;
+
+                        EstablishmentSabeelModel::updateOrCreate(
+                            [
+                                'establishment_id' => $establishmentId,
+                                'year'             => $year,
+                            ],
+                            [
+                                'sabeel'     => $sabeel,
+                                'updated_by' => $updatedBy,
+                            ]
+                        );
+
+                        $sabeelSynced++;
+                    }
+                }
+
+                DB::commit();
+
+                return $this->success('Establishments synced successfully', [
+                    'establishment_synced' => $establishmentSynced,
+                    'sabeel_synced'       => $sabeelSynced,
+                    'owner_mappings_synced' => $ownerMappingsSynced,
+                    'total_records'       => count($data['data'])
+                ], 200);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Establishment sync failed');
         }
     }
 }
