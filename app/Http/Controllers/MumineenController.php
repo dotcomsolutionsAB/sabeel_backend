@@ -322,6 +322,57 @@ class MumineenController extends Controller
         }
     }
 
+    /**
+     * Fetch all family members (FMs only) for a given family_id
+     * GET /family_members/retrieve/{family_id}
+     */
+    public function fetchFamilyMembers($family_id)
+    {
+        try {
+            $familyId = (int) $family_id;
+
+            // Fetch only FMs (Family Members) for this family_id, ordered by age
+            $members = MumineenModel::where('family_id', $familyId)
+                ->where('hof_type', 'FM')
+                ->where('status', 'active')
+                ->orderBy('age', 'asc')
+                ->get();
+
+            if ($members->isEmpty()) {
+                return $this->error('Family not found or no active family members', 404);
+            }
+
+            // Format members data
+            $familyMembers = [];
+            foreach ($members as $member) {
+                $familyMembers[] = [
+                    'id' => (string) $member->id,
+                    'family_id' => (string) $member->family_id,
+                    'hof_type' => $member->hof_type,
+                    'its' => $member->its,
+                    'name' => $member->name,
+                    'sector' => $member->sector ?? '',
+                    'sub_sector' => $member->sub_sector ?? '',
+                    'mobile' => $member->mobile ?? '',
+                    'email' => $member->email ?? '',
+                    'gender' => $member->gender,
+                    'age' => $member->age,
+                    'pic' => $member->pic,
+                    'status' => $member->status,
+                ];
+            }
+
+            return $this->success('Family members fetched successfully', [
+                'family_id' => (string) $familyId,
+                'members' => $familyMembers,
+                'total_members' => count($familyMembers),
+            ], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Family members fetch failed');
+        }
+    }
+
     // export
     public function export(Request $request)
     {
