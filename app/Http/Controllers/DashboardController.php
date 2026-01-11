@@ -78,7 +78,7 @@ class DashboardController extends Controller
                     $q->on('s.family_id', '=', 'r.family_id')
                     ->where('r.status', 'active');
                 })
-                ->where('s.year', '<', $currentYear)
+                ->where('s.year', '<', $currentYearStr)
                 ->select(
                     's.family_id',
                     DB::raw('SUM(r.amount) as paid'),
