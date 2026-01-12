@@ -351,6 +351,7 @@ class MumineenController extends Controller
                     $establishmentDetails[] = [
                         'establishment_id' => $estId,
                         'name'             => $estName,
+                        'sabeel'           => (string)$estSabeelCur,
                         'due'              => (string)$estDueCur,
                     ];
                 }
@@ -1029,6 +1030,7 @@ class MumineenController extends Controller
                 $estDetails[] = [
                     'establishment_id' => $estId,
                     'name'             => $estName,
+                    'sabeel'           => (string)$estSabeelCur,
                     'due'              => (string)$estDueCur,
                 ];
 
