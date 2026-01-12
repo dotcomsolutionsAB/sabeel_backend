@@ -111,6 +111,8 @@ class ReceiptController extends Controller
             $yearWiseDues = $this->getYearWiseDues($type, $familyId, $establishmentId);
 
             $createdReceipts = [];
+            // Track receipts created in this transaction: [['name' => '...', 'date' => '...', 'amount' => ...], ...]
+            $receiptsCreatedInTransaction = [];
             $remainingAmount = $amount;
 
             // Process year-wise (oldest first)
@@ -122,19 +124,26 @@ class ReceiptController extends Controller
 
                 if ($due <= 0) continue;
 
-                $amountForYear = min($remainingAmount, $due);
-
-                // Handle cash mode splitting
-                if ($mode === 'cash' && $amountForYear > 10000) {
-                    $receipts = $this->createCashSplitReceipts($type, $familyId, $establishmentId, $year, $amountForYear, $request, $date);
-                    $createdReceipts = array_merge($createdReceipts, $receipts);
-                    $remainingAmount -= $amountForYear;
+                // For cash mode, try to pay full year due first
+                if ($mode === 'cash') {
+                    $result = $this->processYearDueForCash(
+                        $type, $familyId, $establishmentId, $year, $due, $remainingAmount, 
+                        $request, $date, $receiptsCreatedInTransaction
+                    );
+                    $receiptsCreatedInTransaction = $result['receipts_created'];
+                    $createdReceipts = array_merge($createdReceipts, $result['receipts']);
+                    $remainingAmount -= $result['amount_used'];
                 } else {
-                    // Non-cash mode or amount <= 10000
-                    $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $amountForYear, $request, $date);
+                    // Non-cash mode
+                    $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, min($remainingAmount, $due), $request, $date, $receiptsCreatedInTransaction);
                     if ($receipt) {
-                        $createdReceipts[] = $receipt;
-                        $remainingAmount -= $amountForYear;
+                        $createdReceipts[] = $receipt['receipt'];
+                        $receiptsCreatedInTransaction[] = [
+                            'name' => $receipt['name'],
+                            'date' => $date,
+                            'amount' => $receipt['amount']
+                        ];
+                        $remainingAmount -= $receipt['amount'];
                     }
                 }
             }
@@ -218,6 +227,20 @@ class ReceiptController extends Controller
 
                     $remainingAmount = $amount;
                     $entryReceipts = [];
+                    // Track receipts created for this entry
+                    $receiptsCreatedForEntry = [];
+
+                    // Create request object for receipt creation
+                    $receiptRequest = new Request([
+                        'mode' => $mode,
+                        'remarks' => $entry->remarks,
+                        'trans_id' => null,
+                        'trans_date' => null,
+                        'bank' => null,
+                        'cheque_no' => null,
+                        'cheque_date' => null,
+                        'ifsc' => null,
+                    ]);
 
                     // Process year-wise (oldest first)
                     foreach ($yearWiseDues as $yearData) {
@@ -228,25 +251,25 @@ class ReceiptController extends Controller
 
                         if ($due <= 0) continue;
 
-                        $amountForYear = min($remainingAmount, $due);
-
-                        // Create request object for receipt creation
-                        $receiptRequest = new Request([
-                            'mode' => $mode,
-                            'remarks' => $entry->remarks,
-                        ]);
-
-                        // Handle cash mode splitting
-                        if ($mode === 'cash' && $amountForYear > 10000) {
-                            $receipts = $this->createCashSplitReceipts($type, $familyId, $establishmentId, $year, $amountForYear, $receiptRequest, $date);
-                            $entryReceipts = array_merge($entryReceipts, $receipts);
-                            $remainingAmount -= $amountForYear;
+                        if ($mode === 'cash') {
+                            $result = $this->processYearDueForCash(
+                                $type, $familyId, $establishmentId, $year, $due, $remainingAmount,
+                                $receiptRequest, $date, $receiptsCreatedForEntry
+                            );
+                            $receiptsCreatedForEntry = $result['receipts_created'];
+                            $entryReceipts = array_merge($entryReceipts, $result['receipts']);
+                            $remainingAmount -= $result['amount_used'];
                         } else {
-                            // Non-cash mode or amount <= 10000
-                            $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $amountForYear, $receiptRequest, $date);
+                            // Non-cash mode
+                            $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, min($remainingAmount, $due), $receiptRequest, $date, $receiptsCreatedForEntry);
                             if ($receipt) {
-                                $entryReceipts[] = $receipt;
-                                $remainingAmount -= $amountForYear;
+                                $entryReceipts[] = $receipt['receipt'];
+                                $receiptsCreatedForEntry[] = [
+                                    'name' => $receipt['name'],
+                                    'date' => $date,
+                                    'amount' => $receipt['amount']
+                                ];
+                                $remainingAmount -= $receipt['amount'];
                             }
                         }
                     }
@@ -265,7 +288,7 @@ class ReceiptController extends Controller
 
                     $createdReceipts = array_merge($createdReceipts, $entryReceipts);
 
-                } catch (\Throwable $e) {
+        } catch (\Throwable $e) {
                     // Mark as failed and log error
                     $entry->status = 'failed';
                     $entry->save();
@@ -615,7 +638,7 @@ class ReceiptController extends Controller
             //     'margin_bottom' => 0,
             // ]);
 $mpdf = new \Mpdf\Mpdf([
-    'mode' => 'utf-8',
+                'mode' => 'utf-8',
     'format' => [210, 148],  // A5 Landscape (width, height)
     'margin_left' => 6.5,    // ~25px
     'margin_right' => 6.5,   // ~25px
@@ -804,6 +827,250 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /**
+     * Get total amount for a person on a specific date (CASH + ACTIVE receipts only)
+     * Includes both DB receipts and receipts created in current transaction
+     */
+    private function getTotalAmountForPersonOnDate(string $name, string $date, array $receiptsCreatedInTransaction): float
+    {
+        // Get total from database (CASH + ACTIVE only)
+        $dbTotal = (float) ReceiptModel::where('name', $name)
+            ->whereDate('date', $date)
+            ->where('mode', 'cash')
+            ->where('status', 'active')
+            ->sum('amount');
+
+        // Add receipts created in current transaction
+        $transactionTotal = 0;
+        foreach ($receiptsCreatedInTransaction as $receipt) {
+            if ($receipt['name'] === $name && $receipt['date'] === $date) {
+                $transactionTotal += (float) $receipt['amount'];
+            }
+        }
+
+        return $dbTotal + $transactionTotal;
+    }
+
+    /**
+     * Check if a person can take an amount without exceeding Rs. 10,000 limit
+     * Only considers CASH and ACTIVE receipts
+     */
+    private function canPersonTakeAmount(string $name, string $date, float $amount, array $receiptsCreatedInTransaction): bool
+    {
+        $currentTotal = $this->getTotalAmountForPersonOnDate($name, $date, $receiptsCreatedInTransaction);
+        return ($currentTotal + $amount) <= 10000;
+    }
+
+    /**
+     * Process year due for cash mode - tries to pay full year due first
+     */
+    private function processYearDueForCash(
+        string $type, ?int $familyId, ?int $establishmentId, string $year, 
+        float $due, float $remainingAmount, Request $request, string $date, 
+        array $receiptsCreatedInTransaction
+    ): array {
+        $receipts = [];
+        $amountUsed = 0;
+        $amountToPay = min($remainingAmount, $due);
+
+        if ($type === 'family') {
+            // Try to pay full year due to one person first
+            $members = $this->getFamilyMembersForReceipts($familyId);
+            
+            // Try HOF first, then FMs
+            foreach ($members as $member) {
+                if ($this->canPersonTakeAmount($member->name, $date, $amountToPay, $receiptsCreatedInTransaction)) {
+                    // Can pay full amount to this member
+                    $receipt = $this->createReceiptForFamilyMember(
+                        $familyId, $establishmentId, $year, $amountToPay, 
+                        $member, $request, $date, null, $receiptsCreatedInTransaction
+                    );
+                    if ($receipt) {
+                        $receipts[] = $receipt['receipt'];
+                        $receiptsCreatedInTransaction[] = [
+                            'name' => $receipt['name'],
+                            'date' => $date,
+                            'amount' => $receipt['amount']
+                        ];
+                        $amountUsed = $amountToPay;
+                        break;
+                    }
+                }
+            }
+
+            // If couldn't pay full amount to one person, split it
+            if ($amountUsed < $amountToPay && $amountToPay > 10000) {
+                $remainingToPay = $amountToPay - $amountUsed;
+                $splitResult = $this->splitAmountAcrossMembers(
+                    $familyId, $establishmentId, $year, $remainingToPay,
+                    $members, $request, $date, $receiptsCreatedInTransaction
+                );
+                $receipts = array_merge($receipts, $splitResult['receipts']);
+                $receiptsCreatedInTransaction = $splitResult['receipts_created'];
+                $amountUsed += $splitResult['amount_used'];
+            } elseif ($amountUsed < $amountToPay) {
+                // Amount <= 10000 but couldn't assign to one person, try partial
+                // Try to assign what we can
+                foreach ($members as $member) {
+                    if ($amountUsed >= $amountToPay) break;
+                    
+                    $available = 10000 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
+                    if ($available > 0) {
+                        $partialAmount = min($available, $amountToPay - $amountUsed);
+                        $receipt = $this->createReceiptForFamilyMember(
+                            $familyId, $establishmentId, $year, $partialAmount,
+                            $member, $request, $date, null, $receiptsCreatedInTransaction
+                        );
+                        if ($receipt) {
+                            $receipts[] = $receipt['receipt'];
+                            $receiptsCreatedInTransaction[] = [
+                                'name' => $receipt['name'],
+                                'date' => $date,
+                                'amount' => $receipt['amount']
+                            ];
+                            $amountUsed += $partialAmount;
+                        }
+                    }
+                }
+            }
+        } else {
+            // For establishments - similar logic but with partners
+            $partners = $this->getEstablishmentPartners($establishmentId);
+            if (!empty($partners)) {
+                $allMembers = [];
+                foreach ($partners as $partnerFamilyId) {
+                    $partnerMembers = $this->getFamilyMembersForReceipts($partnerFamilyId);
+                    foreach ($partnerMembers as $member) {
+                        $allMembers[] = $member;
+                    }
+                }
+                
+                // Try to pay full amount to one member first
+                foreach ($allMembers as $member) {
+                    if ($this->canPersonTakeAmount($member->name, $date, $amountToPay, $receiptsCreatedInTransaction)) {
+                        $receipt = $this->createReceiptForFamilyMember(
+                            null, $establishmentId, $year, $amountToPay,
+                            $member, $request, $date, (int) $member->family_id, $receiptsCreatedInTransaction
+                        );
+                        if ($receipt) {
+                            $receipts[] = $receipt['receipt'];
+                            $receiptsCreatedInTransaction[] = [
+                                'name' => $receipt['name'],
+                                'date' => $date,
+                                'amount' => $receipt['amount']
+                            ];
+                            $amountUsed = $amountToPay;
+                            break;
+                        }
+                    }
+                }
+
+                // If couldn't pay full, split
+                if ($amountUsed < $amountToPay && $amountToPay > 10000) {
+                    $remainingToPay = $amountToPay - $amountUsed;
+                    $splitResult = $this->splitAmountAcrossMembers(
+                        null, $establishmentId, $year, $remainingToPay,
+                        $allMembers, $request, $date, $receiptsCreatedInTransaction, true
+                    );
+                    $receipts = array_merge($receipts, $splitResult['receipts']);
+                    $receiptsCreatedInTransaction = $splitResult['receipts_created'];
+                    $amountUsed += $splitResult['amount_used'];
+                }
+            } else {
+                // No partners - use establishment name
+                $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+                if ($est) {
+                    if ($this->canPersonTakeAmount($est->name, $date, $amountToPay, $receiptsCreatedInTransaction)) {
+                        $receipt = $this->createReceiptForYear(
+                            $type, $familyId, $establishmentId, $year, $amountToPay,
+                            $request, $date, $receiptsCreatedInTransaction
+                        );
+                        if ($receipt) {
+                            $receipts[] = $receipt['receipt'];
+                            $receiptsCreatedInTransaction[] = [
+                                'name' => $receipt['name'],
+                                'date' => $date,
+                                'amount' => $receipt['amount']
+                            ];
+                            $amountUsed = $amountToPay;
+                        }
+                    } else {
+                        // Split across multiple receipts with establishment name
+                        $chunks = $this->splitCashAmount($amountToPay);
+                        foreach ($chunks as $chunk) {
+                            if ($this->canPersonTakeAmount($est->name, $date, $chunk, $receiptsCreatedInTransaction)) {
+                                $receipt = $this->createReceiptForYear(
+                                    $type, $familyId, $establishmentId, $year, $chunk,
+                                    $request, $date, $receiptsCreatedInTransaction
+                                );
+                                if ($receipt) {
+                                    $receipts[] = $receipt['receipt'];
+                                    $receiptsCreatedInTransaction[] = [
+                                        'name' => $receipt['name'],
+                                        'date' => $date,
+                                        'amount' => $receipt['amount']
+                                    ];
+                                    $amountUsed += $chunk;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return [
+            'receipts' => $receipts,
+            'receipts_created' => $receiptsCreatedInTransaction,
+            'amount_used' => $amountUsed
+        ];
+    }
+
+    /**
+     * Split amount across available members
+     */
+    private function splitAmountAcrossMembers(
+        ?int $familyId, ?int $establishmentId, string $year, float $amount,
+        array $members, Request $request, string $date, array $receiptsCreatedInTransaction,
+        bool $isEstablishment = false
+    ): array {
+        $receipts = [];
+        $amountUsed = 0;
+        $remaining = $amount;
+
+        foreach ($members as $member) {
+            if ($remaining <= 0) break;
+
+            $available = 10000 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
+            if ($available > 0) {
+                $chunkAmount = min($available, $remaining);
+                if ($chunkAmount >= 100) { // Minimum receipt amount
+                    $memberFamilyId = $isEstablishment ? (int) $member->family_id : $familyId;
+                    $receipt = $this->createReceiptForFamilyMember(
+                        $familyId, $establishmentId, $year, $chunkAmount,
+                        $member, $request, $date, $memberFamilyId, $receiptsCreatedInTransaction
+                    );
+                    if ($receipt) {
+                        $receipts[] = $receipt['receipt'];
+                        $receiptsCreatedInTransaction[] = [
+                            'name' => $receipt['name'],
+                            'date' => $date,
+                            'amount' => $receipt['amount']
+                        ];
+                        $amountUsed += $chunkAmount;
+                        $remaining -= $chunkAmount;
+                    }
+                }
+            }
+        }
+
+        return [
+            'receipts' => $receipts,
+            'receipts_created' => $receiptsCreatedInTransaction,
+            'amount_used' => $amountUsed
+        ];
+    }
+
+    /**
      * Get dues for each year (oldest first) - advance_paid is not year-specific, so we exclude it here
      */
     private function getYearWiseDues(string $type, ?int $familyId, ?int $establishmentId): array
@@ -936,15 +1203,18 @@ $mpdf = new \Mpdf\Mpdf([
      */
     private function checkReceiptExistsForNameAndDate(string $name, string $date): bool
     {
+        // Only check CASH receipts and ACTIVE receipts
         return ReceiptModel::where('name', $name)
             ->whereDate('date', $date)
+            ->where('mode', 'cash')
+            ->where('status', 'active')
             ->exists();
     }
 
     /**
      * Create a single receipt for a year
      */
-    private function createReceiptForYear(string $type, ?int $familyId, ?int $establishmentId, string $year, float $amount, Request $request, string $date): ?array
+    private function createReceiptForYear(string $type, ?int $familyId, ?int $establishmentId, string $year, float $amount, Request $request, string $date, array $receiptsCreatedInTransaction = []): ?array
     {
         $name = null;
         $its = null;
@@ -964,9 +1234,14 @@ $mpdf = new \Mpdf\Mpdf([
             $its = null;
         }
 
-        // Check if receipt already exists for this name and date
-        if ($this->checkReceiptExistsForNameAndDate($name, $date)) {
-            return null; // Skip this receipt
+        // For cash mode, check if person can take this amount
+        if ($request->mode === 'cash') {
+            if (!$this->canPersonTakeAmount($name, $date, $amount, $receiptsCreatedInTransaction)) {
+                return null; // Person can't take this amount
+            }
+        } else {
+            // For non-cash, just check if receipt exists (only for cash)
+            // No need to check for cheque/neft
         }
 
         $receiptNo = $this->nextReceiptNo();
@@ -994,7 +1269,13 @@ $mpdf = new \Mpdf\Mpdf([
             'updated_by'       => (int) Auth::id(),
         ]);
 
-        return $this->mapReceipt($receipt);
+        $mappedReceipt = $this->mapReceipt($receipt);
+
+        return [
+            'receipt' => $mappedReceipt,
+            'name' => $name,
+            'amount' => $amount
+        ];
     }
 
     /**
@@ -1075,13 +1356,15 @@ $mpdf = new \Mpdf\Mpdf([
     /**
      * Create receipt for a family member (helper for cash splitting)
      */
-    private function createReceiptForFamilyMember(?int $familyId, ?int $establishmentId, string $year, float $amount, $member, Request $request, string $date, ?int $memberFamilyId = null): ?array
+    private function createReceiptForFamilyMember(?int $familyId, ?int $establishmentId, string $year, float $amount, $member, Request $request, string $date, ?int $memberFamilyId = null, array $receiptsCreatedInTransaction = []): ?array
     {
         $actualFamilyId = $memberFamilyId ?? $familyId;
         
-        // Check if receipt already exists for this name and date
-        if ($this->checkReceiptExistsForNameAndDate($member->name, $date)) {
-            return null;
+        // For cash mode, check if person can take this amount
+        if ($request->mode === 'cash') {
+            if (!$this->canPersonTakeAmount($member->name, $date, $amount, $receiptsCreatedInTransaction)) {
+                return null; // Person can't take this amount
+            }
         }
 
         $receiptNo = $this->nextReceiptNo();
@@ -1109,7 +1392,13 @@ $mpdf = new \Mpdf\Mpdf([
             'updated_by'       => (int) Auth::id(),
         ]);
 
-        return $this->mapReceipt($receipt);
+        $mappedReceipt = $this->mapReceipt($receipt);
+
+        return [
+            'receipt' => $mappedReceipt,
+            'name' => $member->name,
+            'amount' => $amount
+        ];
     }
 
     /**
