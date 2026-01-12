@@ -555,7 +555,7 @@ class MumineenController extends Controller
         return [$cur, $prev];
     }
 
-    private function familyDueForYear(int $familyId, int $year): array
+    private function familyDueForYear(int $familyId, string $year): array
     {
         $sabeel = (int) MumineenSabeelModel::where('family_id', $familyId)
             ->where('year', $year)
@@ -575,7 +575,7 @@ class MumineenController extends Controller
         return [$sabeel, $due];
     }
 
-    private function establishmentTotalsDueForYear(array $estCodes, int $year): array
+    private function establishmentTotalsDueForYear(array $estCodes, string $year): array
     {
         if (empty($estCodes)) return [0, 0];
 
@@ -959,21 +959,22 @@ class MumineenController extends Controller
 
     private function resolveYears(): array
     {
-        $currentYear = (int) YearModel::where('is_current', 1)->value('year');
-        if (!$currentYear) {
-            $currentYear = (int) YearModel::max('year');
+        // Get current year as string (format: "2024-25")
+        $currentYearRecord = YearModel::where('is_current', 1)->first();
+        if (!$currentYearRecord) {
+            $currentYearRecord = YearModel::orderBy('year', 'desc')->first();
         }
-        if (!$currentYear) {
-            $currentYear = (int) date('Y');
-        }
+        $currentYear = $currentYearRecord ? $currentYearRecord->year : (string) date('Y');
 
         $yearsList = YearModel::orderBy('year','desc')->pluck('year')->toArray();
         if (empty($yearsList)) {
-            $yearsList = [$currentYear, $currentYear - 1, $currentYear - 2];
+            $currentYearInt = (int) date('Y');
+            $yearsList = [(string)$currentYearInt, (string)($currentYearInt - 1), (string)($currentYearInt - 2)];
         }
 
-        $prevYear = collect($yearsList)->filter(fn($y) => $y < $currentYear)->first();
-        $prevYear = $prevYear ? (int)$prevYear : ($currentYear - 1);
+        // Get previous year (string format)
+        $prevYearRecord = YearModel::where('year', '<', $currentYear)->orderBy('year', 'desc')->first();
+        $prevYear = $prevYearRecord ? $prevYearRecord->year : '';
 
         return [$currentYear, $prevYear, $yearsList];
     }
@@ -1018,7 +1019,7 @@ class MumineenController extends Controller
         return $q;
     }
 
-    private function buildPayload($rows, int $currentYear, int $prevYear, array $yearsList): array
+    private function buildPayload($rows, string $currentYear, string $prevYear, array $yearsList): array
     {
         $familyIds = collect($rows)->pluck('family_id')->filter()->unique()->values()->all();
         if (empty($familyIds)) return [];
@@ -1082,7 +1083,7 @@ class MumineenController extends Controller
                     'due'    => (string)$due,
                 ];
 
-                if ((int)$yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
+                if ($yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
             }
 
             // Calculate prev_due as sum of dues for all years before current year
