@@ -5,134 +5,272 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt - {{ $receiptNumber }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        html, body { height: 100%; }
-
-        body{
-            font-family:"Montserrat", sans-serif;
-            background:#fff;
-            color:#111;
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
         }
-
-        /* Fill printable area (inside mPDF margins) */
-        .receipt-card{
+        
+        html, body { 
+            height: 100%; 
             width: 100%;
-            height: 100%;
-            border: 2px solid #111;
-            border-radius: 22px;
+        }
+
+        body {
+            font-family: "Roboto", sans-serif;
             background: #fff;
-            padding: 18px 18px 14px;
+            color: #1a1a1a;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        table{ width:100%; border-collapse: collapse; }
-
-        /* Top row */
-        .top td{
-            font-size: 13px;
-            font-weight: 800;
-            padding-bottom: 10px;
+        /* Receipt card - fills A5 page */
+        .receipt-card {
+            width: 100%;
+            min-height: 100%;
+            border: 2.5px solid #1a1a1a;
+            border-radius: 12px;
+            background: #ffffff;
+            padding: 22px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
-        .top .left{ text-align:left; }
-        .top .right{ text-align:right; }
 
-        /* Header row */
-        .header td{
+        .receipt-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+        }
+
+        /* Top row - Receipt Number and Date */
+        .top {
+            margin-bottom: 16px;
+        }
+        
+        .top td {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 0;
+            color: #333;
+        }
+        
+        .top .left { 
+            text-align: left; 
+        }
+        
+        .top .right { 
+            text-align: right; 
+        }
+        
+        .top span {
+            font-weight: 700;
+            color: #1a1a1a;
+            letter-spacing: 0.3px;
+        }
+
+        /* Header section */
+        .header {
+            margin-bottom: 20px;
+        }
+        
+        .header td {
             vertical-align: middle;
-            padding: 4px 0 6px;
+            padding: 6px 0;
         }
-        .logo-cell{
-            width:30%;
-            text-align:center;
-            padding-right: 4px;
-            height:100%;
+        
+        .logo-cell {
+            width: 28%;
+            text-align: center;
+            padding-right: 12px;
+            vertical-align: middle;
         }
-        .text-cell{
-            width:70%;
-            text-align:center;
+        
+        .text-cell {
+            width: 72%;
+            text-align: center;
+            vertical-align: middle;
         }
-        .logo{
-            width: 100px;
+        
+        .logo {
+            width: 95px;
             height: auto;
-            display:inline-block;
+            display: inline-block;
+            max-width: 100%;
         }
 
-        .org-title{
-            font-size: 24px;
+        .org-title {
+            font-family: "Playfair Display", serif;
+            font-size: 20px;
             font-weight: 900;
             text-transform: uppercase;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
+            color: #1a1a1a;
+            letter-spacing: 0.5px;
+            line-height: 1.3;
         }
-        .org-address{
-            font-size: 20px;
-            font-weight: 700;
+        
+        .org-address {
+            font-size: 11.5px;
+            font-weight: 500;
             margin-bottom: 6px;
+            color: #555;
+            letter-spacing: 0.2px;
         }
-        .anjuman{
-            font-size: 24px;
+        
+        .anjuman {
+            font-family: "Playfair Display", serif;
+            font-size: 22px;
             font-weight: 900;
             text-transform: uppercase;
             text-decoration: underline;
-            text-underline-offset: 3px;
+            text-underline-offset: 4px;
+            text-decoration-thickness: 2px;
+            color: #1a1a1a;
+            letter-spacing: 0.5px;
         }
 
-        /* Received From + Amount aligned */
-        .single td{
-            padding: 8px 0;
-            font-size: 13px;
+        /* Main content area */
+        .content-section {
+            flex: 1;
+            margin-bottom: 16px;
+        }
+
+        /* Single column rows */
+        .single {
+            margin-bottom: 12px;
+        }
+        
+        .single td {
+            padding: 10px 0;
+            font-size: 13.5px;
+            vertical-align: baseline;
+        }
+        
+        .single.emph td {
+            font-size: 15px;
             font-weight: 700;
+            line-height: 1.5;
+            padding: 12px 0;
         }
-        .single.emph td{
-            font-size: 14px;
-            font-weight: 900;
-            line-height: 1.35;
-            padding: 8px 0;
-        }
-        .label-col{
-            width: 190px;
+        
+        .label-col {
+            width: 200px;
             white-space: nowrap;
-            font-weight: 900;
-            font-size:18px;
+            font-weight: 700;
+            font-size: 14.5px;
+            color: #1a1a1a;
+            padding-right: 8px;
+            vertical-align: bottom;
+            padding-bottom: 4px;
         }
-        .value-col{
-            font-weight: 600;
-            font-size:18px;
+        
+        .value-col {
+            font-weight: 500;
+            font-size: 14.5px;
+            color: #2c2c2c;
+            word-wrap: break-word;
+            line-height: 1.5;
+            border-bottom: 1.8px solid #1a1a1a;
+            padding-bottom: 3px;
+            padding-left: 4px;
+            vertical-align: bottom;
         }
 
-        /* Split rows */
-        .split6 td{
-            padding: 8px 0;
+        /* Split rows - two columns */
+        .split6 {
+            margin-bottom: 10px;
+        }
+        
+        .split6 td {
+            padding: 9px 0;
             font-size: 13px;
-            vertical-align: top;
+            vertical-align: bottom;
+            line-height: 1.5;
         }
 
-        .split6 .k1{ width: 18%; font-weight:900; white-space:nowrap; }
-        .split6 .s1{ width: 6%; }
-        .split6 .v1{ width: 26%; font-weight:700; }
+        .split6 .k1 { 
+            width: 19%; 
+            font-weight: 700; 
+            white-space: nowrap; 
+            color: #1a1a1a;
+            padding-right: 4px;
+            padding-bottom: 4px;
+        }
+        
+        .split6 .s1 { 
+            width: 2%; 
+        }
+        
+        .split6 .v1 { 
+            width: 29%; 
+            font-weight: 500; 
+            color: #2c2c2c;
+            border-bottom: 1.8px solid #1a1a1a;
+            padding-bottom: 3px;
+            padding-left: 4px;
+        }
 
-        .split6 .k2{ width: 26%; font-weight:900; white-space:nowrap; }
-        .split6 .s2{ width: 6%; }
-        .split6 .v2{ width: 18%; font-weight:700; }
+        .split6 .k2 { 
+            width: 27%; 
+            font-weight: 700; 
+            white-space: nowrap; 
+            color: #1a1a1a;
+            padding-right: 4px;
+            padding-bottom: 4px;
+        }
+        
+        .split6 .s2 { 
+            width: 2%; 
+        }
+        
+        .split6 .v2 { 
+            width: 21%; 
+            font-weight: 500; 
+            color: #2c2c2c;
+            border-bottom: 1.8px solid #1a1a1a;
+            padding-bottom: 3px;
+            padding-left: 4px;
+        }
 
-        /* ✅ Footer like image (NOT bottom-sticky) */
-        .footer{
-            text-align:center;
+        /* Footer */
+        .footer {
+            text-align: center;
             font-style: italic;
-            font-size: 12px;
-            color:#333;
-            margin-top: 16px;   /* ✅ space above like image */
+            font-size: 11px;
+            color: #666;
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+            font-weight: 400;
+            letter-spacing: 0.2px;
         }
 
-        @media print{
-            body{ padding:0; }
+        @media print {
+            body { 
+                padding: 0; 
+                margin: 0;
+            }
+            
+            .receipt-card {
+                box-shadow: none;
+            }
         }
     </style>
 </head>
 <body>
 
 <div class="receipt-card">
+    <div class="receipt-content">
 
     <!-- Receipt No + Date -->
     <table class="top">
@@ -142,79 +280,84 @@
         </tr>
     </table>
 
-    <!-- Header -->
-    <table class="header">
-        <tr>
-            <td class="logo-cell">
-                <img class="logo"
-                     src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png"
-                     alt="Logo"
-                     onerror="this.style.display='none'"/>
-            </td>
-            <td class="text-cell">
-                <div class="org-title">DAWOODI BOHRA JAMAAT TRUST (KOLKATA)</div>
-                <div class="org-address">16/F, Dr, Syedna Mohammed Burhanuddin Road</div>
-                <div class="anjuman">ANJUMAN - E - MOHAMMEDI</div>
-            </td>
-        </tr>
-    </table>
+        <!-- Header -->
+        <table class="header">
+            <tr>
+                <td class="logo-cell">
+                    <img class="logo"
+                         src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png"
+                         alt="Logo"
+                         onerror="this.style.display='none'"/>
+                </td>
+                <td class="text-cell">
+                    <div class="org-title">DAWOODI BOHRA JAMAAT TRUST (KOLKATA)</div>
+                    <div class="org-address">16/F, Dr, Syedna Mohammed Burhanuddin Road</div>
+                    <div class="anjuman">ANJUMAN - E - MOHAMMEDI</div>
+                </td>
+            </tr>
+        </table>
 
-    <!-- Received From -->
-    <table class="single emph">
-        <tr>
-            <td class="label-col">Received From :</td>
-            <td class="value-col">{{ $receivedFrom }}</td>
-        </tr>
-    </table>
+        <!-- Main Content Section -->
+        <div class="content-section">
+            <!-- Received From -->
+            <table class="single emph">
+                <tr>
+                    <td class="label-col">Received From :</td>
+                    <td class="value-col">{{ $receivedFrom }}</td>
+                </tr>
+            </table>
 
-    <!-- Amount -->
-    <table class="single emph">
-        <tr>
-            <td class="label-col">Amount :</td>
-            <td class="value-col">{{ $amount }} ( {{ $amountInWords }} )</td>
-        </tr>
-    </table>
+            <!-- Amount -->
+            <table class="single emph">
+                <tr>
+                    <td class="label-col">Amount :</td>
+                    <td class="value-col">{{ $amount }} ( {{ $amountInWords }} )</td>
+                </tr>
+            </table>
 
-    <!-- Payment Mode + Cheque/Txn -->
-    <table class="split6">
-        <tr>
-            <td class="k1">Payment Mode :</td>
-            <td class="s1"></td>
-            <td class="v1">{{ $paymentMode }}</td>
+            <!-- Payment Mode + Cheque/Txn -->
+            <table class="split6">
+                <tr>
+                    <td class="k1">Payment Mode :</td>
+                    <td class="s1"></td>
+                    <td class="v1">{{ $paymentMode }}</td>
 
-            <td class="k2">Cheque No / Transaction Id :</td>
-            <td class="s2"></td>
-            <td class="v2">{{ $chequeNo }}</td>
-        </tr>
-    </table>
+                    <td class="k2">Cheque No / Transaction Id :</td>
+                    <td class="s2"></td>
+                    <td class="v2">{{ $chequeNo }}</td>
+                </tr>
+            </table>
 
-    <!-- Year + Bank -->
-    <table class="split6">
-        <tr>
-            <td class="k1">For the Year :</td>
-            <td class="s1"></td>
-            <td class="v1">{{ $year }}</td>
+            <!-- Year + Bank -->
+            <table class="split6">
+                <tr>
+                    <td class="k1">For the Year :</td>
+                    <td class="s1"></td>
+                    <td class="v1">{{ $year }}</td>
 
-            <td class="k2">Bank Name :</td>
-            <td class="s2"></td>
-            <td class="v2">{{ $bankName }}</td>
-        </tr>
-    </table>
+                    <td class="k2">Bank Name :</td>
+                    <td class="s2"></td>
+                    <td class="v2">{{ $bankName }}</td>
+                </tr>
+            </table>
 
-    <!-- Received By + Dated -->
-    <table class="split6">
-        <tr>
-            <td class="k1">Received By :</td>
-            <td class="s1"></td>
-            <td class="v1">{{ $receivedBy }}</td>
+            <!-- Received By + Dated -->
+            <table class="split6">
+                <tr>
+                    <td class="k1">Received By :</td>
+                    <td class="s1"></td>
+                    <td class="v1">{{ $receivedBy }}</td>
 
-            <td class="k2">Dated :</td>
-            <td class="s2"></td>
-            <td class="v2">{{ $chequeDate }}</td>
-        </tr>
-    </table>
+                    <td class="k2">Dated :</td>
+                    <td class="s2"></td>
+                    <td class="v2">{{ $chequeDate }}</td>
+                </tr>
+            </table>
+        </div>
 
-    <!-- ✅ Footer positioned like screenshot -->
+    </div>
+    
+    <!-- Footer -->
     <div class="footer">
         This is a computer generated receipt and does not require any signature.
     </div>
