@@ -273,15 +273,39 @@ class MumineenController extends Controller
             }
 
             // 2) Resolve years
-            [$currentYear, $prevYear] = array_slice($this->resolveYears(), 0, 2);
+            [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
             // 3) FAMILY sabeel + due
             [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
             [$famPrevSabeel, $famPrevDue] = $this->familyDueForYear($familyId, $prevYear);
 
-            // 4) Establishment totals (all linked establishments) - use business codes
+            // 4) Build sabeel_details (year-wise)
+            $sabeelDetails = [];
+            $ms = MumineenSabeelModel::where('family_id', $familyId)
+                ->get()
+                ->keyBy('year');
+
+            $familyPaid = ReceiptModel::select('year', DB::raw('SUM(amount) as paid'))
+                ->where('family_id', $familyId)
+                ->where('status', 'active')
+                ->groupBy('year')
+                ->pluck('paid', 'year');
+
+            foreach ($yearsList as $yr) {
+                $sabeelAmt = (int) (optional($ms->get($yr))->sabeel ?? 0);
+                $paid = (float) ($familyPaid->get($yr) ?? 0);
+                $due = max(0, $sabeelAmt - $paid);
+
+                $sabeelDetails[] = [
+                    'year'   => $this->yearLabel((int)$yr),
+                    'sabeel' => (string)$sabeelAmt,
+                    'due'    => (string)$due,
+                ];
+            }
+
+            // 5) Establishment totals and details
             $estCodes = MumineenEstablishmentModel::where('family_id', $familyId)
-                ->pluck('establishment_id')     // ✅ 10-digit business codes
+                ->pluck('establishment_id')
                 ->filter()
                 ->unique()
                 ->values()
@@ -291,11 +315,51 @@ class MumineenController extends Controller
             [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estCodes, $currentYear);
             [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estCodes, $prevYear);
 
-            // 5) Response payload (as you required)
+            // Build establishment_details
+            $establishmentDetails = [];
+            $links = MumineenEstablishmentModel::with('establishment')
+                ->where('family_id', $familyId)
+                ->get()
+                ->unique('establishment_id');
+
+            if (!empty($estCodes)) {
+                $es = EstablishmentSabeelModel::whereIn('establishment_id', $estCodes)
+                    ->get()
+                    ->groupBy('establishment_id');
+
+                $estPaid = ReceiptModel::select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
+                    ->whereIn('establishment_id', $estCodes)
+                    ->where('status', 'active')
+                    ->groupBy('establishment_id', 'year')
+                    ->get()
+                    ->groupBy('establishment_id');
+
+                foreach ($links as $lnk) {
+                    $estId = (string) $lnk->establishment_id;
+                    $estName = (string) (optional($lnk->establishment)->name ?? '');
+
+                    $estSabeelCur = (int) optional($es->get($estId))
+                        ?->firstWhere('year', $currentYear)
+                        ?->sabeel ?? 0;
+
+                    $estPaidCur = (float) optional($estPaid->get($estId))
+                        ?->firstWhere('year', $currentYear)
+                        ?->paid ?? 0;
+
+                    $estDueCur = max(0, $estSabeelCur - $estPaidCur);
+
+                    $establishmentDetails[] = [
+                        'establishment_id' => $estId,
+                        'name'             => $estName,
+                        'due'              => (string)$estDueCur,
+                    ];
+                }
+            }
+
+            // 6) Response payload
             $data = [
                 'id'        => (string) $hof->id,
                 'family_id' => (string) $familyId,
-                // 'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
                 'url'       => (string) $hof->pic,
 
                 'name'   => (string) ($hof->name ?? ''),
@@ -310,11 +374,15 @@ class MumineenController extends Controller
                     'prev_due' => (string) $famPrevDue,
                 ],
 
+                'sabeel_details' => $sabeelDetails,
+
                 'establishment' => [
                     'sabeel'   => (string) $estCurSabeel,
                     'due'      => (string) $estCurDue,
                     'prev_due' => (string) $estPrevDue,
                 ],
+
+                'establishment_details' => $establishmentDetails,
             ];
 
             // Your ApiResponse -> returns {code,status,message,data:{...}}
