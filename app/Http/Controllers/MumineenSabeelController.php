@@ -331,7 +331,7 @@ class MumineenSabeelController extends Controller
         return [$sabeel, $due];
     }
 
-    private function establishmentSummaryForFamily(int $family_id, int $currentYear, int $prevYear): array
+    private function establishmentSummaryForFamily(int $family_id, int $currentYear): array
     {
         $estIds = MumineenEstablishmentModel::where('family_id', $family_id)
             ->pluck('establishment_id')
@@ -358,23 +358,68 @@ class MumineenSabeelController extends Controller
 
             $curDue = max(0, $curSabeel - $curPaid);
 
-            $prevSabeel = (int) EstablishmentSabeelModel::where('establishment_id', $estId)
-                ->where('year', $prevYear)
-                ->value('sabeel');
-
-            $prevPaid = (float) ReceiptModel::where('establishment_id', $estId)
-                ->where('year', $prevYear)
-                ->where('status', 'active')
-                ->sum('amount');
-
-            $prevDue = max(0, $prevSabeel - $prevPaid);
-
             $curSabeelSum += $curSabeel;
             $curDueSum += $curDue;
-            $prevDueSum += $prevDue;
         }
 
+        // Calculate prev_due as sum of dues for all years before current year
+        $prevDueSum = $this->establishmentTotalDueForAllPreviousYears($estIds, (string)$currentYear);
+
         return [$curSabeelSum, $curDueSum, $prevDueSum];
+    }
+
+    /**
+     * Calculate total due for all years before current year (for prev_due)
+     */
+    private function familyTotalDueForAllPreviousYears(int $familyId, string $currentYear): float
+    {
+        // Get all sabeel entries for years < current year
+        $sabeelEntries = MumineenSabeelModel::where('family_id', $familyId)
+            ->where('year', '<', $currentYear)
+            ->get();
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $entry) {
+            $year = $entry->year;
+            $sabeel = (float) $entry->sabeel;
+            $paid = (float) ReceiptModel::where('family_id', $familyId)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+            $due = max(0, $sabeel - $paid);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
+    }
+
+    /**
+     * Calculate total establishment due for all years before current year (for prev_due)
+     */
+    private function establishmentTotalDueForAllPreviousYears(array $estCodes, string $currentYear): float
+    {
+        if (empty($estCodes)) return 0;
+
+        // Get all sabeel entries for years < current year
+        $sabeelEntries = EstablishmentSabeelModel::whereIn('establishment_id', $estCodes)
+            ->where('year', '<', $currentYear)
+            ->get()
+            ->groupBy('year');
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $year => $entries) {
+            $sabeelSum = (float) $entries->sum('sabeel');
+            $paidSum = (float) ReceiptModel::whereIn('establishment_id', $estCodes)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+            $due = max(0, $sabeelSum - $paidSum);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
     }
 
     private function buildFamilySummaryPayload(int $family_id): array
@@ -384,9 +429,11 @@ class MumineenSabeelController extends Controller
         [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
         [$curSabeel, $curDue] = $this->familyDueForYear($family_id, $currentYear);
-        [$prevSabeel, $prevDue] = $this->familyDueForYear($family_id, $prevYear);
+        
+        // Calculate prev_due as sum of dues for all years before current year
+        $prevDue = $this->familyTotalDueForAllPreviousYears($family_id, (string)$currentYear);
 
-        [$estSabeel, $estDue, $estPrevDue] = $this->establishmentSummaryForFamily($family_id, $currentYear, $prevYear);
+        [$estSabeel, $estDue, $estPrevDue] = $this->establishmentSummaryForFamily($family_id, $currentYear);
 
         $sabeelDetails = $this->buildFamilySabeelDetails($family_id, $yearsList);
 

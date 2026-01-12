@@ -278,7 +278,9 @@ class MumineenController extends Controller
 
             // 3) FAMILY sabeel + due
             [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
-            [$famPrevSabeel, $famPrevDue] = $this->familyDueForYear($familyId, $prevYear);
+            
+            // Calculate prev_due as sum of dues for all years before current year
+            $famPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, (string)$currentYear);
 
             // 4) Build sabeel_details (year-wise)
             $sabeelDetails = [];
@@ -352,10 +354,13 @@ class MumineenController extends Controller
                     $establishmentDetails[] = [
                         'establishment_id' => $estId,
                         'name'             => $estName,
-                        'sabeel'           => (string)$estSabeelCur,
-                        'due'              => (string)$estDueCur,
-                    ];
-                }
+                    'sabeel'           => (string)$estSabeelCur,
+                    'due'              => (string)$estDueCur,
+                ];
+            }
+
+            // Calculate prev_due as sum of dues for all years before current year for all establishments
+            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodesForFamily, (string)$currentYear);
             }
 
             // 6) Response payload
@@ -595,6 +600,60 @@ class MumineenController extends Controller
         $dueSum = max(0, $sabeelSum - $paidSum);
 
         return [$sabeelSum, $dueSum];
+    }
+
+    /**
+     * Calculate total due for all years before current year (for prev_due)
+     */
+    private function familyTotalDueForAllPreviousYears(int $familyId, string $currentYear): float
+    {
+        // Get all sabeel entries for years < current year
+        $sabeelEntries = MumineenSabeelModel::where('family_id', $familyId)
+            ->where('year', '<', $currentYear)
+            ->get();
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $entry) {
+            $year = $entry->year;
+            $sabeel = (float) $entry->sabeel;
+            $paid = (float) ReceiptModel::where('family_id', $familyId)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+            $due = max(0, $sabeel - $paid);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
+    }
+
+    /**
+     * Calculate total establishment due for all years before current year (for prev_due)
+     */
+    private function establishmentTotalDueForAllPreviousYears(array $estCodes, string $currentYear): float
+    {
+        if (empty($estCodes)) return 0;
+
+        // Get all sabeel entries for years < current year
+        $sabeelEntries = EstablishmentSabeelModel::whereIn('establishment_id', $estCodes)
+            ->where('year', '<', $currentYear)
+            ->get()
+            ->groupBy('year');
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $year => $entries) {
+            $sabeelSum = (float) $entries->sum('sabeel');
+            $paidSum = (float) ReceiptModel::whereIn('establishment_id', $estCodes)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+            $due = max(0, $sabeelSum - $paidSum);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
     }
 
     // sector index
@@ -1003,14 +1062,19 @@ class MumineenController extends Controller
                 ];
 
                 if ((int)$yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
-                if ((int)$yr === $prevYear) { $prevDue = $due; }
             }
+
+            // Calculate prev_due as sum of dues for all years before current year
+            $prevDue = $this->familyTotalDueForAllPreviousYears((int)$m->family_id, (string)$currentYear);
 
             // establishment_details
             $estDetails = [];
             $estCurSabeelSum = 0; $estCurDueSum = 0; $estPrevDueSum = 0;
 
             $familyLinks = $links->get($m->family_id) ?? collect();
+
+            // Get all establishment IDs for this family
+            $estCodesForFamily = $familyLinks->unique('establishment_id')->pluck('establishment_id')->filter()->unique()->values()->all();
 
             foreach ($familyLinks->unique('establishment_id') as $lnk) {
                 $estId = (string) $lnk->establishment_id;
@@ -1026,15 +1090,8 @@ class MumineenController extends Controller
 
                 $estDueCur = max(0, $estSabeelCur - $estPaidCur);
 
-                $estSabeelPrev = (int) optional($es->get($estId))
-                    ?->firstWhere('year', $prevYear)
-                    ?->sabeel ?? 0;
-
-                $estPaidPrev = (float) optional($estPaid->get($estId))
-                    ?->firstWhere('year', $prevYear)
-                    ?->paid ?? 0;
-
-                $estDuePrev = max(0, $estSabeelPrev - $estPaidPrev);
+                $estCurSabeelSum += $estSabeelCur;
+                $estCurDueSum += $estDueCur;
 
                 $estDetails[] = [
                     'establishment_id' => $estId,
@@ -1042,11 +1099,10 @@ class MumineenController extends Controller
                     'sabeel'           => (string)$estSabeelCur,
                     'due'              => (string)$estDueCur,
                 ];
-
-                $estCurSabeelSum += $estSabeelCur;
-                $estCurDueSum    += $estDueCur;
-                $estPrevDueSum   += $estDuePrev;
             }
+
+            // Calculate prev_due as sum of dues for all years before current year for all establishments
+            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodesForFamily, (string)$currentYear);
 
             $out[] = [
                 'id'        => (string) $m->id,

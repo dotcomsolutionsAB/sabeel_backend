@@ -62,12 +62,13 @@ class DashboardController extends Controller
                 ->pluck('family_id')
                 ->all();
 
-            // Calculate total sabeel for active HOFs only
+            // Calculate total sabeel for active HOFs only (current year only)
             $totalMumineenSabeel = DB::table('t_mumineen_sabeel')
                 ->whereIn('family_id', $activeHofFamilyIds)
+                ->where('year', $currentYearStr)
                 ->sum('sabeel');
 
-            // Calculate paid amount for active HOFs only (year-wise matching)
+            // Calculate paid amount for active HOFs only (current year only)
             $paidMumineen = DB::table('t_mumineen_sabeel as s')
                 ->leftJoin('t_receipts as r', function ($q) {
                     $q->on('s.family_id', '=', 'r.family_id')
@@ -75,6 +76,7 @@ class DashboardController extends Controller
                     ->where('r.status', 'active');
                 })
                 ->whereIn('s.family_id', $activeHofFamilyIds)
+                ->where('s.year', $currentYearStr)
                 ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
                 ->value('paid') ?? 0;
 
@@ -139,10 +141,10 @@ class DashboardController extends Controller
             // Get all establishment IDs
             $allEstablishmentIds = EstablishmentModel::pluck('establishment_id')->all();
 
-            // Calculate total sabeel for all establishments
-            $totalEstSabeel = EstablishmentSabeelModel::sum('sabeel');
+            // Calculate total sabeel for all establishments (current year only)
+            $totalEstSabeel = EstablishmentSabeelModel::where('year', $currentYearStr)->sum('sabeel');
 
-            // Calculate paid amount for all establishments (year-wise matching)
+            // Calculate paid amount for all establishments (current year only)
             $paidEst = DB::table('t_establishment_sabeel as s')
                 ->leftJoin('t_receipts as r', function ($q) {
                     $q->on('s.establishment_id', '=', 'r.establishment_id')
@@ -150,6 +152,7 @@ class DashboardController extends Controller
                     ->where('r.status', 'active');
                 })
                 ->whereIn('s.establishment_id', $allEstablishmentIds)
+                ->where('s.year', $currentYearStr)
                 ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
                 ->value('paid') ?? 0;
 
