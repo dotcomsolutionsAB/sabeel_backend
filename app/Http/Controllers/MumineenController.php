@@ -358,8 +358,7 @@ class MumineenController extends Controller
             }
 
             // Calculate prev_due as sum of dues for all years before current year for all establishments
-            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodesForFamily, (string)$currentYear);
-            }
+            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodes, (string)$currentYear);
 
             // 6) Response payload
             $data = [
@@ -384,7 +383,7 @@ class MumineenController extends Controller
                 'establishment' => [
                     'sabeel'   => (string) $estCurSabeel,
                     'due'      => (string) $estCurDue,
-                    'prev_due' => (string) $estPrevDue,
+                    'prev_due' => (string) $estPrevDueSum,
                 ],
 
                 'establishment_details' => $establishmentDetails,
