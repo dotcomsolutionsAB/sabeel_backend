@@ -77,7 +77,7 @@ class EstablishmentSabeelController extends Controller
     /**
      * UPDATE by establishment_id and year
      * POST /establishment_sabeel/update/{establishment_id}
-     * Body: { "year": "2024-25", "sabeel": 6000 }
+     * Body: { "year": "2024-25", "amount": 6000 }
      */
     public function update(Request $request, $establishment_id)
     {
@@ -89,7 +89,7 @@ class EstablishmentSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|string|max:10',
-                'sabeel' => 'required|numeric|min:0',
+                'amount' => 'required|numeric|min:0',
             ]);
 
             if ($validator->fails()) {
@@ -97,7 +97,7 @@ class EstablishmentSabeelController extends Controller
             }
 
             $year = $request->year;
-            $sabeel = (float) $request->sabeel;
+            $sabeel = (float) $request->amount;
 
             // Find sabeel entry by establishment_id and year
             $row = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
