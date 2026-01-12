@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 use App\Traits\ApiResponse;
+use App\Traits\SmartSearch;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -11,7 +12,7 @@ use Illuminate\Http\Request;
 class UserController extends Controller
 {
     //
-    use ApiResponse;
+    use ApiResponse, SmartSearch;
     // Register API
     public function create(Request $request)
     {
@@ -69,10 +70,7 @@ class UserController extends Controller
                 ->orderBy('name', 'asc');
 
             if ($search !== '') {
-                $q->where(function ($w) use ($search) {
-                    $w->where('name', 'like', "%{$search}%")
-                    ->orWhere('username', 'like', "%{$search}%");
-                });
+                $this->applySmartSearch($q, $search, ['name', 'username', 'email']);
             }
 
             if ($role !== '') {

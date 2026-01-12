@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Traits\ApiResponse;
+use App\Traits\SmartSearch;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentSabeelModel;
@@ -22,7 +23,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportController extends Controller
 {
-    use ApiResponse;
+    use ApiResponse, SmartSearch;
 
     /**
      * Dry run - Analyze Excel file and return report of changes
@@ -1163,11 +1164,7 @@ class ImportController extends Controller
                 ->orderBy('name', 'asc');
 
             if ($search !== '') {
-                $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('its', 'like', "%{$search}%")
-                        ->orWhere('sector', 'like', "%{$search}%");
-                });
+                $this->applySmartSearch($query, $search, ['name', 'its', 'sector']);
             }
 
             $total = $query->count();

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 use App\Traits\ApiResponse;
+use App\Traits\SmartSearch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
@@ -26,7 +27,7 @@ use Illuminate\Support\Facades\Storage;
 class MumineenController extends Controller
 {
     //
-    use ApiResponse;
+    use ApiResponse, SmartSearch;
     /**
      * Create HOF Mumineen
      * Defaults:
@@ -142,17 +143,14 @@ class MumineenController extends Controller
                 ->orderBy('sub_sector', 'asc')
                 ->orderBy('name', 'asc');
 
-            // search in name, its, sector, and also family member its numbers
+            // Smart search in name, its, sector, and also family member its numbers
             if ($search !== '') {
-                $q->where(function ($w) use ($search) {
-                    $w->where('name', 'like', "%{$search}%")
-                      ->orWhere('its', 'like', "%{$search}%")
-                      ->orWhere('sector', 'like', "%{$search}%")
-                      ->orWhereIn('family_id', function($sub) use ($search) {
-                          $sub->from('t_mumineen')
-                              ->select('family_id')
-                              ->where('its', 'like', "%{$search}%");
-                      });
+                $this->applySmartSearch($q, $search, ['name', 'its', 'sector'], function ($query, $keyword) {
+                    $query->orWhereIn('family_id', function($sub) use ($keyword) {
+                        $sub->from('t_mumineen')
+                            ->select('family_id')
+                            ->where('its', 'like', "%{$keyword}%");
+                    });
                 });
             }
 
@@ -480,14 +478,11 @@ class MumineenController extends Controller
 
 
             if ($search !== '') {
-                $q->where(function ($w) use ($search) {
-                    $w->where('name', 'like', "%{$search}%")
-                    ->orWhere('its', 'like', "%{$search}%")
-                    ->orWhere('sector', 'like', "%{$search}%")
-                    ->orWhereIn('family_id', function($sub) use ($search) {
+                $this->applySmartSearch($q, $search, ['name', 'its', 'sector'], function ($query, $keyword) {
+                    $query->orWhereIn('family_id', function($sub) use ($keyword) {
                         $sub->from('t_mumineen')
                             ->select('family_id')
-                            ->where('its', 'like', "%{$search}%");
+                            ->where('its', 'like', "%{$keyword}%");
                     });
                 });
             }

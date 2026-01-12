@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Traits\ApiResponse;
+use App\Traits\SmartSearch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,7 @@ use App\Models\YearModel;
 class EstablishmentController extends Controller
 {
     //
-    use ApiResponse;
+    use ApiResponse, SmartSearch;
 
     /**
      * CREATE
@@ -93,22 +94,19 @@ class EstablishmentController extends Controller
                 ->select('id','establishment_id','name','address','type','status')
                 ->orderBy('name','asc');
 
-            // SEARCH: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
+            // Smart search: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
             if ($search !== '') {
-                $q->where(function($w) use ($search) {
-                    $w->where('name', 'like', "%{$search}%")
-                      ->orWhere('address', 'like', "%{$search}%")
-                      ->orWhere('establishment_id', 'like', "%{$search}%")
-                      ->orWhereExists(function($sub) use ($search) {
-                          $sub->from('t_mumineen_establishment as me')
-                              ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                              ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
-                              ->where(function($x) use ($search) {
-                                  $x->where('m.its', 'like', "%{$search}%")
-                                    ->orWhere('m.name', 'like', "%{$search}%")
-                                    ->orWhere('m.sector', 'like', "%{$search}%");
-                              });
-                      });
+                $this->applySmartSearch($q, $search, ['name', 'address', 'establishment_id'], function ($query, $keyword) {
+                    $query->orWhereExists(function($sub) use ($keyword) {
+                        $sub->from('t_mumineen_establishment as me')
+                            ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
+                            ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
+                            ->where(function($x) use ($keyword) {
+                                $x->where('m.its', 'like', "%{$keyword}%")
+                                  ->orWhere('m.name', 'like', "%{$keyword}%")
+                                  ->orWhere('m.sector', 'like', "%{$keyword}%");
+                            });
+                    });
                 });
             }
 
