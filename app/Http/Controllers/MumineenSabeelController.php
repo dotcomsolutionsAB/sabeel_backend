@@ -22,14 +22,14 @@ class MumineenSabeelController extends Controller
         use ApiResponse;
 
     /**
-     * CREATE: /family_details/{family_id}/create
-     * Body: { "year": 2025, "sabeel": 2100 }
+     * CREATE: /family_sabeel/create/{family_id}
+     * Body: { "year": "2025-26", "amount": 2100 }
      * updated_by from token
      */
     public function create(Request $request, $family_id)
     {
         try {
-            // validate family exists
+            // Validate family exists
             $hof = $this->getHofByFamilyId($family_id);
             if (!$hof) {
                 return $this->error('Invalid family_id. Family not found.', 404);
@@ -37,14 +37,14 @@ class MumineenSabeelController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'year'   => 'required|string|max:10',
-                'amount' => 'required|integer|min:0',
+                'amount' => 'required|numeric|min:0',
             ]);
 
             if ($validator->fails()) {
                 return $this->validation($validator);
             }
 
-            // optional: prevent duplicate year for same family
+            // Validation: prevent duplicate sabeel for same family_id and year
             $exists = MumineenSabeelModel::where('family_id', $family_id)
                 ->where('year', $request->year)
                 ->exists();
@@ -53,6 +53,7 @@ class MumineenSabeelController extends Controller
                 return $this->error('Sabeel already exists for this family and year.', 409);
             }
 
+            // Create new sabeel entry
             $row = MumineenSabeelModel::create([
                 'family_id'  => (int) $family_id,
                 'year'       => $request->year,
@@ -60,7 +61,7 @@ class MumineenSabeelController extends Controller
                 'updated_by' => (int) Auth::id(),
             ]);
 
-            // return computed summary payload (same as fetch response)
+            // Return computed summary payload (same as fetch response)
             $payload = $this->buildFamilySummaryPayload((int)$family_id);
 
             return $this->success('Data saved successfully', $payload, 200);
