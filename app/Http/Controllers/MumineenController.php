@@ -651,6 +651,32 @@ class MumineenController extends Controller
         return $totalPrevDue;
     }
 
+    /**
+     * List all active users (HOF & FM) with its and name only
+     * GET /mumineen/list-all
+     */
+    public function listAll(Request $request)
+    {
+        try {
+            $users = MumineenModel::where('status', 'active')
+                ->select('its', 'name')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            $data = $users->map(function ($user) {
+                return [
+                    'its' => (string) $user->its,
+                    'name' => (string) $user->name,
+                ];
+            });
+
+            return $this->success('Users fetched successfully', $data->values()->all(), 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Users list fetch failed');
+        }
+    }
+
     // sector index
     public function index(Request $request)
     {

@@ -66,6 +66,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
         Route::get('/family_details/{family_id}/retrieve/{id?}', [MumineenController::class, 'fetch_family_details']);
         Route::get('/family_members/retrieve/{family_id}', [MumineenController::class, 'fetchFamilyMembers']);
+        Route::get('/mumineen/list-all', [MumineenController::class, 'listAll']);
 
     // establishment route
     Route::prefix('establishment')->group(function () {
