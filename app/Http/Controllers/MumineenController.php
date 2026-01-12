@@ -103,6 +103,7 @@ class MumineenController extends Controller
             // SINGLE -> still return array (consistent with your sample)
             if ($id !== null) {
                 $m = MumineenModel::where('hof_type','HOF')
+                    ->where('status', 'active')
                     ->where(function ($q) use ($id) {
                         $q->where('id', $id)
                         ->orWhere('family_id', $id);
@@ -126,6 +127,7 @@ class MumineenController extends Controller
 
             $q = MumineenModel::query()
                 ->where('hof_type', 'HOF')
+                ->where('status', 'active')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
                 ->select('id','family_id','its','name','sector','mobile','email', 'pic')
                 ->orderByRaw("CASE 
@@ -388,6 +390,7 @@ class MumineenController extends Controller
             $filter = trim((string) $request->input('filter', ''));
 
             $q = MumineenModel::where('hof_type','HOF')
+                ->where('status', 'active')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
                 ->orderByRaw("CASE 
                     WHEN sector = 'BURHANI' THEN 1 
