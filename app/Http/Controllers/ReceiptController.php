@@ -1427,24 +1427,27 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /**
-     * receipt_no using t_counter row with prefix="RCP"
-     * Creates row if missing.
-     * Format: {prefix}{number}{postfix}
+     * Generate next receipt_no using t_counter row 1
+     * Format: {prefix}{4-digit padded number}{postfix}
+     * Example: prefix = "AEM-", number = 132, postfix = "/25-26" → "AEM-0132/25-26"
      */
     private function nextReceiptNo(): string
     {
-        // If you don't want counter table, replace this with your own logic.
-        $counter = CounterModel::firstOrCreate(
-            ['prefix' => 'RCP'],
-            ['number' => 0, 'postfix' => '']
-        );
+        // Get counter row 1
+        $counter = CounterModel::find(1);
+        
+        if (!$counter) {
+            throw new \Exception('Counter row 1 not found. Please create a counter entry with id=1.');
+        }
 
+        // Increment the number
         $counter->number = (int) $counter->number + 1;
         $counter->save();
 
-        // Optional: pad to 6 digits
-        $num = str_pad((string)$counter->number, 6, '0', STR_PAD_LEFT);
+        // Pad to 4 digits
+        $paddedNumber = str_pad((string)$counter->number, 4, '0', STR_PAD_LEFT);
 
-        return $counter->prefix . $num . $counter->postfix;
+        // Format: prefix.{4-digit padded number}.postfix
+        return $counter->prefix . $paddedNumber . $counter->postfix;
     }
 }
