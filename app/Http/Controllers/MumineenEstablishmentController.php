@@ -87,8 +87,7 @@ class MumineenEstablishmentController extends Controller
             }
 
             // LIST
-            $rows = MumineenEstablishmentModel::with('mumineen')
-                ->where('establishment_id', (int)$establishment_id)
+            $rows = MumineenEstablishmentModel::where('establishment_id', (int)$establishment_id)
                 ->orderBy('id', 'desc')
                 ->get();
 
@@ -164,12 +163,18 @@ class MumineenEstablishmentController extends Controller
 
     private function mapRow(MumineenEstablishmentModel $r): array
     {
+        // Fetch partner by family_id (HOF)
+        $partner = MumineenModel::where('family_id', $r->family_id)
+            ->where('hof_type', 'HOF')
+            ->where('status', 'active')
+            ->first();
+
         return [
             'id'     => (string) $r->id,
-            'url'    => '', // frontend can build if needed
-            'name'   => (string) ($r->mumineen->name ?? ''),
-            'its'    => (string) $r->its,
-            'mobile' => (string) ($r->mumineen->mobile ?? ''),
+            'url'    => $partner ? $partner->pic : '',
+            'name'   => (string) ($partner->name ?? ''),
+            'its'    => (string) ($partner->its ?? ''),
+            'mobile' => (string) ($partner->mobile ?? ''),
         ];
     }
 }
