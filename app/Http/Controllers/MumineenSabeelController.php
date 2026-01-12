@@ -106,6 +106,86 @@ class MumineenSabeelController extends Controller
     }
 
     /**
+     * UPDATE: /family_sabeel/update/{family_id}
+     * Body: { "year": "2025-26", "amount": "5236" }
+     */
+    public function update(Request $request, $family_id)
+    {
+        try {
+            // validate family exists
+            $hof = $this->getHofByFamilyId($family_id);
+            if (!$hof) {
+                return $this->error('Invalid family_id. Family not found.', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'year'   => 'required|string|max:10',
+                'amount' => 'required|numeric|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $year = $request->year;
+            $amount = (float) $request->amount;
+
+            // Find sabeel entry by family_id and year
+            $row = MumineenSabeelModel::where('family_id', $family_id)
+                ->where('year', $year)
+                ->first();
+
+            if (!$row) {
+                return $this->error('Sabeel entry not found for this family and year.', 404);
+            }
+
+            // Validation 1: amount cannot be less than amount already paid in receipts for that year
+            $paidThisYear = (float) ReceiptModel::where('family_id', $family_id)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+
+            if ($amount < $paidThisYear) {
+                return $this->error("Amount cannot be less than the amount already paid ({$paidThisYear}) for this year.", 422);
+            }
+
+            // Validation 2: If receipts exist for the next year, amount cannot be greater than what was paid in the current year
+            // This prevents changing the commitment for the current year if someone has already paid for a future year
+            $allYears = YearModel::orderBy('year', 'asc')->pluck('year')->toArray();
+            $currentYearIndex = array_search($year, $allYears);
+            
+            if ($currentYearIndex !== false && isset($allYears[$currentYearIndex + 1])) {
+                $nextYear = $allYears[$currentYearIndex + 1];
+                
+                // Check if receipts exist for the next year (future year)
+                $receiptsNextYear = ReceiptModel::where('family_id', $family_id)
+                    ->where('year', $nextYear)
+                    ->where('status', 'active')
+                    ->exists();
+                
+                if ($receiptsNextYear) {
+                    // If receipts exist for future year, amount cannot exceed what was paid in current year
+                    if ($amount > $paidThisYear) {
+                        return $this->error("Amount cannot be greater than the amount already paid ({$paidThisYear}) for this year ({$year}), as receipts have been generated for a future year ({$nextYear}).", 422);
+                    }
+                }
+            }
+
+            // Update the sabeel entry
+            $row->sabeel = (int) $amount;
+            $row->updated_by = (int) Auth::id();
+            $row->save();
+
+            $payload = $this->buildFamilySummaryPayload((int)$family_id);
+
+            return $this->success('Data saved successfully', $payload, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Mumineen sabeel update failed');
+        }
+    }
+
+    /**
      * UPDATE: /family_details/{family_id}/update/{id}
      * Body: { "year": 2025, "sabeel": 2200 }
      */

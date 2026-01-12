@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('family_sabeel')->group(function () {
         Route::post('/create/{family_id}', [MumineenSabeelController::class, 'create']);
         Route::post('/retrieve/{family_id}/{id?}', [MumineenSabeelController::class, 'fetch']);
+        Route::post('/update/{family_id}', [MumineenSabeelController::class, 'update']);
         Route::post('/update/{family_id}/{id}', [MumineenSabeelController::class, 'edit']);
         Route::delete('/delete/{family_id}/{id}', [MumineenSabeelController::class, 'delete']);
     });
