@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\GenericExcelExport;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -194,7 +195,22 @@ class DashboardController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            return $this->serverError($e, 'Dashboard retrieve failed');
+            Log::error('Dashboard retrieve failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            // Return error details in response for debugging
+            return $this->error('Dashboard retrieve failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine(), 500, [
+                'error_details' => [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Trace available in logs',
+                ],
+            ]);
         }
     }
 
