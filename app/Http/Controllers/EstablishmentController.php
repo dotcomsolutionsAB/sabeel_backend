@@ -498,15 +498,16 @@ class EstablishmentController extends Controller
         $out = [];
 
         foreach ($rows as $e) {
+            // Use establishment_id (business key) for lookups
+            $estId = (string) $e->establishment_id;
 
-            $curSabeel = (int) optional($es->get($e->id))?->firstWhere('year', $currentYear)?->sabeel ?? 0;
-            $prevSabeel = (int) optional($es->get($e->id))?->firstWhere('year', $prevYear)?->sabeel ?? 0;
-
-            $curPaid  = (float) optional($paid->get($e->id))?->firstWhere('year', $currentYear)?->paid ?? 0;
-            $prevPaid = (float) optional($paid->get($e->id))?->firstWhere('year', $prevYear)?->paid ?? 0;
-
+            // Current year sabeel and due
+            $curSabeel = (int) optional($es->get($estId))?->firstWhere('year', $currentYear)?->sabeel ?? 0;
+            $curPaid  = (float) optional($paid->get($estId))?->firstWhere('year', $currentYear)?->paid ?? 0;
             $curDue  = max(0, $curSabeel - $curPaid);
-            $prevDue = max(0, $prevSabeel - $prevPaid);
+
+            // Calculate prev_due as sum of dues for all years before current year
+            $prevDue = $this->establishmentTotalDueForAllPreviousYears([$estId], $currentYear);
 
             // Build partners list
             $partners = [];
@@ -543,5 +544,33 @@ class EstablishmentController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Calculate total establishment due for all years before current year (for prev_due)
+     */
+    private function establishmentTotalDueForAllPreviousYears(array $estIds, string $currentYear): float
+    {
+        if (empty($estIds)) return 0;
+
+        // Get all sabeel entries for years < current year
+        $sabeelEntries = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+            ->where('year', '<', $currentYear)
+            ->get()
+            ->groupBy('year');
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $year => $entries) {
+            $sabeelSum = (float) $entries->sum('sabeel');
+            $paidSum = (float) ReceiptModel::whereIn('establishment_id', $estIds)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+            $due = max(0, $sabeelSum - $paidSum);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
     }
 }
