@@ -19,6 +19,7 @@ use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use App\Models\AdvancePaidModel;
 use Illuminate\Database\Eloquent\Builder;
 
 class DashboardController extends Controller
@@ -77,7 +78,13 @@ class DashboardController extends Controller
                 ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
                 ->value('paid') ?? 0;
 
-            $dueMumineenSabeel = max(0, $totalMumineenSabeel - $paidMumineen);
+            // Include advance_paid (pending only) in total paid
+            $advancePaidMumineen = AdvancePaidModel::whereIn('family_id', $activeHofFamilyIds)
+                ->where('type', 'family')
+                ->where('status', 'pending')
+                ->sum('amount');
+
+            $dueMumineenSabeel = max(0, $totalMumineenSabeel - $paidMumineen - (float) $advancePaidMumineen);
 
             // Count unique family_id that has due in any one year (year-wise matching)
             $dueHouses = DB::table('t_mumineen_sabeel as s')
@@ -146,7 +153,13 @@ class DashboardController extends Controller
                 ->select(DB::raw('COALESCE(SUM(r.amount),0) as paid'))
                 ->value('paid') ?? 0;
 
-            $dueEstSabeel = max(0, $totalEstSabeel - $paidEst);
+            // Include advance_paid (pending only) in total paid
+            $advancePaidEst = AdvancePaidModel::whereIn('establishment_id', $allEstablishmentIds)
+                ->where('type', 'establishment')
+                ->where('status', 'pending')
+                ->sum('amount');
+
+            $dueEstSabeel = max(0, $totalEstSabeel - $paidEst - (float) $advancePaidEst);
 
             // Count establishments that have due in any one year (year-wise matching)
             $dueEstablishment = DB::table('t_establishment_sabeel as s')

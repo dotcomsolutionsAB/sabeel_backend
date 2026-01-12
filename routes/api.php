@@ -104,6 +104,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     // receipt route
     Route::prefix('receipt')->group(function () {
         Route::post('/create', [ReceiptController::class, 'create']);
+        Route::post('/process-advance-paid', [ReceiptController::class, 'processAdvancePaid']);
         Route::post('/retrieve/{id?}', [ReceiptController::class, 'fetch']);
         Route::post('/update/{id}', [ReceiptController::class, 'edit']);
         Route::delete('/delete/{id}', [ReceiptController::class, 'delete']);

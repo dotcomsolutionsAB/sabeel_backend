@@ -19,6 +19,10 @@ use App\Models\MumineenModel;
 use App\Models\EstablishmentModel;
 use App\Models\YearModel;
 use App\Models\CounterModel;
+use App\Models\MumineenSabeelModel;
+use App\Models\EstablishmentSabeelModel;
+use App\Models\MumineenEstablishmentModel;
+use App\Models\AdvancePaidModel;
 use Mpdf\Mpdf;
 
 class ReceiptController extends Controller
@@ -28,13 +32,12 @@ class ReceiptController extends Controller
 
     /**
      * CREATE
-     * POST /receipts/create
+     * POST /receipt/create
      * Body:
      * {
      *   "type":"family|establishment",
      *   "family_id": "",
      *   "establishment_id": "",
-     *   "year": 2025,
      *   "mode": "cash|cheque|neft",
      *   "amount": 2100,
      *   "remarks": "",
@@ -49,21 +52,17 @@ class ReceiptController extends Controller
     public function create(Request $request)
     {
         try {
+            DB::beginTransaction();
+
             $validator = Validator::make($request->all(), [
                 'type' => 'required|in:family,establishment',
-
                 'family_id'        => 'required_if:type,family|nullable|integer',
                 'establishment_id' => 'required_if:type,establishment|nullable|integer',
-
-                'year'   => 'required|string|max:10',
                 'mode'   => 'required|in:cash,cheque,neft',
                 'amount' => 'required|numeric|min:0',
-
                 'remarks'    => 'nullable|string',
-
                 'trans_id'   => 'nullable|string|max:255',
                 'trans_date' => 'nullable|date',
-
                 'bank'       => 'nullable|string|max:255',
                 'cheque_no'  => 'nullable|string|max:255',
                 'cheque_date'=> 'nullable|date',
@@ -71,86 +70,225 @@ class ReceiptController extends Controller
             ]);
 
             if ($validator->fails()) {
+                DB::rollBack();
                 return $this->validation($validator);
             }
 
-            // Validate family / establishment exists and derive name/its
             $type = $request->type;
+            $familyId = $type === 'family' ? (int) $request->family_id : null;
+            $establishmentId = $type === 'establishment' ? (int) $request->establishment_id : null;
+            $mode = $request->mode;
+            $amount = (float) $request->amount;
+            $date = now()->toDateString();
 
-            $familyId = null;
-            $estId = null;
-            $name = null;
-            $its = null;
-
+            // Validate family/establishment exists
             if ($type === 'family') {
-                $familyId = (int) $request->family_id;
-
                 $hof = MumineenModel::where('family_id', $familyId)
                     ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
                     ->first();
-
                 if (!$hof) {
+                    DB::rollBack();
                     return $this->error('Invalid family_id. Family not found.', 404);
                 }
-
-                $name = $hof->name;
-                $its  = $hof->its;
             } else {
-                $estId = (int) $request->establishment_id;
-
-                $est = EstablishmentModel::where('establishment_id', $estId)->first();
+                $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
                 if (!$est) {
+                    DB::rollBack();
                     return $this->error('Invalid establishment_id. Establishment not found.', 404);
                 }
-
-                $name = $est->name;
-                $its  = null;
             }
 
-            // Optional: validate year exists in t_year
-            if (Schema::hasTable('t_year')) {
-                $existsYear = YearModel::where('year', $request->year)->exists();
-                if (!$existsYear) {
-                    return $this->error('Invalid year. Year not found in master.', 422);
+            // Calculate total due (including advance_paid)
+            $totalDue = $this->calculateTotalDue($type, $familyId, $establishmentId);
+            
+            if ($amount > $totalDue) {
+                DB::rollBack();
+                return $this->error("Amount ({$amount}) cannot exceed total due ({$totalDue}).", 422);
+            }
+
+            // Get year-wise dues (oldest first)
+            $yearWiseDues = $this->getYearWiseDues($type, $familyId, $establishmentId);
+
+            $createdReceipts = [];
+            $remainingAmount = $amount;
+
+            // Process year-wise (oldest first)
+            foreach ($yearWiseDues as $yearData) {
+                if ($remainingAmount <= 0) break;
+
+                $year = $yearData['year'];
+                $due = $yearData['due'];
+
+                if ($due <= 0) continue;
+
+                $amountForYear = min($remainingAmount, $due);
+
+                // Handle cash mode splitting
+                if ($mode === 'cash' && $amountForYear > 10000) {
+                    $receipts = $this->createCashSplitReceipts($type, $familyId, $establishmentId, $year, $amountForYear, $request, $date);
+                    $createdReceipts = array_merge($createdReceipts, $receipts);
+                    $remainingAmount -= $amountForYear;
+                } else {
+                    // Non-cash mode or amount <= 10000
+                    $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $amountForYear, $request, $date);
+                    if ($receipt) {
+                        $createdReceipts[] = $receipt;
+                        $remainingAmount -= $amountForYear;
+                    }
                 }
             }
 
-            // Generate receipt_no
-            $receiptNo = $this->nextReceiptNo(); // uses t_counter
+            // If amount left after all dues paid, save to advance_paid
+            $advancePaidEntry = null;
+            if ($remainingAmount > 0) {
+                $advancePaidEntry = $this->saveToAdvancePaid($type, $familyId, $establishmentId, $remainingAmount, $mode, $date, $request->remarks ?? null);
+            }
 
-            $row = ReceiptModel::create([
-                'family_id'        => $familyId,
-                'establishment_id' => $estId,
+            DB::commit();
 
-                'receipt_no' => $receiptNo,
-                'date'       => now()->toDateString(),
-
-                'name' => $name,
-                'its'  => $its,
-
-                'mode' => $request->mode,
-
-                'transaction_no'   => $request->trans_id ?? null,
-                'transaction_date' => $request->trans_date ?? null,
-
-                'bank'       => $request->bank ?? null,
-                'cheque_no'  => $request->cheque_no ?? null,
-                'cheque_date'=> $request->cheque_date ?? null,
-                'ifsc'       => $request->ifsc ?? null,
-
-                'amount' => $request->amount,
-                'year'   => $request->year,
-
-                'comment' => $request->remarks ?? null,
-                'status'  => 'active',
-
-                'updated_by' => (int) Auth::id(),
-            ]);
-
-            return $this->success('Data saved successfully', $row, 200);
+            return $this->success('Receipt(s) created successfully', [
+                'receipts' => $createdReceipts,
+                'advance_paid' => $advancePaidEntry,
+                'total_receipts' => count($createdReceipts),
+            ], 200);
 
         } catch (\Throwable $e) {
+            DB::rollBack();
             return $this->serverError($e, 'Receipt create failed');
+        }
+    }
+
+    /**
+     * Process Advance Paid entries
+     * POST /receipt/process-advance-paid
+     * Body: { "date": "YYYY-MM-DD" } (optional, defaults to yesterday)
+     */
+    public function processAdvancePaid(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+
+            // Get date (default to yesterday)
+            $processDate = $request->input('date', now()->subDay()->toDateString());
+
+            // Get pending entries for the specified date
+            $entries = AdvancePaidModel::where('status', 'pending')
+                ->whereDate('date', $processDate)
+                ->get();
+
+            $processed = 0;
+            $failed = 0;
+            $remaining = 0;
+            $createdReceipts = [];
+            $errors = [];
+
+            foreach ($entries as $entry) {
+                try {
+                    $type = $entry->type;
+                    $familyId = $entry->family_id;
+                    $establishmentId = $entry->establishment_id;
+                    $amount = (float) $entry->amount;
+                    $mode = $entry->mode;
+                    $date = $entry->date->toDateString();
+
+                    // Calculate current due (including advance_paid)
+                    $totalDue = $this->calculateTotalDue($type, $familyId, $establishmentId);
+
+                    if ($amount > $totalDue) {
+                        // Amount exceeds due, mark as failed
+                        $entry->status = 'failed';
+                        $entry->save();
+                        $failed++;
+                        $errors[] = "Entry {$entry->id}: Amount ({$amount}) exceeds total due ({$totalDue})";
+                        continue;
+                    }
+
+                    // Get year-wise dues
+                    $yearWiseDues = $this->getYearWiseDues($type, $familyId, $establishmentId);
+
+                    if (empty($yearWiseDues)) {
+                        // No dues, mark as failed
+                        $entry->status = 'failed';
+                        $entry->save();
+                        $failed++;
+                        $errors[] = "Entry {$entry->id}: No dues found";
+                        continue;
+                    }
+
+                    $remainingAmount = $amount;
+                    $entryReceipts = [];
+
+                    // Process year-wise (oldest first)
+                    foreach ($yearWiseDues as $yearData) {
+                        if ($remainingAmount <= 0) break;
+
+                        $year = $yearData['year'];
+                        $due = $yearData['due'];
+
+                        if ($due <= 0) continue;
+
+                        $amountForYear = min($remainingAmount, $due);
+
+                        // Create request object for receipt creation
+                        $receiptRequest = new Request([
+                            'mode' => $mode,
+                            'remarks' => $entry->remarks,
+                        ]);
+
+                        // Handle cash mode splitting
+                        if ($mode === 'cash' && $amountForYear > 10000) {
+                            $receipts = $this->createCashSplitReceipts($type, $familyId, $establishmentId, $year, $amountForYear, $receiptRequest, $date);
+                            $entryReceipts = array_merge($entryReceipts, $receipts);
+                            $remainingAmount -= $amountForYear;
+                        } else {
+                            // Non-cash mode or amount <= 10000
+                            $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $amountForYear, $receiptRequest, $date);
+                            if ($receipt) {
+                                $entryReceipts[] = $receipt;
+                                $remainingAmount -= $amountForYear;
+                            }
+                        }
+                    }
+
+                    if ($remainingAmount > 0) {
+                        // Still has remaining amount, update entry amount and keep as pending
+                        $entry->amount = $remainingAmount;
+                        $entry->save();
+                        $remaining++;
+                    } else {
+                        // Fully processed
+                        $entry->status = 'processed';
+                        $entry->save();
+                        $processed++;
+                    }
+
+                    $createdReceipts = array_merge($createdReceipts, $entryReceipts);
+
+                } catch (\Throwable $e) {
+                    // Mark as failed and log error
+                    $entry->status = 'failed';
+                    $entry->save();
+                    $failed++;
+                    $errors[] = "Entry {$entry->id}: " . $e->getMessage();
+                }
+            }
+
+            DB::commit();
+
+            return $this->success('Advance paid processing completed', [
+                'processed' => $processed,
+                'failed' => $failed,
+                'remaining' => $remaining,
+                'total_entries' => $entries->count(),
+                'created_receipts' => count($createdReceipts),
+                'receipts' => $createdReceipts,
+                'errors' => $errors,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->serverError($e, 'Advance paid processing failed');
         }
     }
 
@@ -616,6 +754,386 @@ $mpdf = new \Mpdf\Mpdf([
             'ifsc'       => (string) ($r->ifsc ?? ''),
 
             'amount' => (string) $r->amount,
+        ];
+    }
+
+    /* ==================== Helper Methods ==================== */
+
+    /**
+     * Calculate total due across all years (including advance_paid)
+     */
+    private function calculateTotalDue(string $type, ?int $familyId, ?int $establishmentId): float
+    {
+        $totalDue = 0;
+
+        if ($type === 'family') {
+            // Get total sabeel
+            $totalSabeel = MumineenSabeelModel::where('family_id', $familyId)->sum('sabeel');
+            
+            // Get total receipts
+            $totalReceipts = ReceiptModel::where('family_id', $familyId)
+                ->where('status', 'active')
+                ->sum('amount');
+
+            // Get total advance_paid (pending only)
+            $totalAdvancePaid = AdvancePaidModel::where('family_id', $familyId)
+                ->where('type', 'family')
+                ->where('status', 'pending')
+                ->sum('amount');
+
+            $totalDue = max(0, (float) $totalSabeel - (float) $totalReceipts - (float) $totalAdvancePaid);
+        } else {
+            // Get total sabeel
+            $totalSabeel = EstablishmentSabeelModel::where('establishment_id', $establishmentId)->sum('sabeel');
+            
+            // Get total receipts
+            $totalReceipts = ReceiptModel::where('establishment_id', $establishmentId)
+                ->where('status', 'active')
+                ->sum('amount');
+
+            // Get total advance_paid (pending only)
+            $totalAdvancePaid = AdvancePaidModel::where('establishment_id', $establishmentId)
+                ->where('type', 'establishment')
+                ->where('status', 'pending')
+                ->sum('amount');
+
+            $totalDue = max(0, (float) $totalSabeel - (float) $totalReceipts - (float) $totalAdvancePaid);
+        }
+
+        return $totalDue;
+    }
+
+    /**
+     * Get dues for each year (oldest first) - advance_paid is not year-specific, so we exclude it here
+     */
+    private function getYearWiseDues(string $type, ?int $familyId, ?int $establishmentId): array
+    {
+        $yearDues = [];
+
+        if ($type === 'family') {
+            $sabeelEntries = MumineenSabeelModel::where('family_id', $familyId)
+                ->orderBy('year', 'asc')
+                ->get();
+            
+            $receipts = ReceiptModel::where('family_id', $familyId)
+                ->where('status', 'active')
+                ->select('year', DB::raw('SUM(amount) as paid'))
+                ->groupBy('year')
+                ->get()
+                ->keyBy('year');
+
+            foreach ($sabeelEntries as $entry) {
+                $year = $entry->year;
+                $sabeel = (float) $entry->sabeel;
+                $paid = (float) ($receipts->get($year)->paid ?? 0);
+                $due = max(0, $sabeel - $paid);
+                if ($due > 0) {
+                    $yearDues[] = ['year' => $year, 'due' => $due];
+                }
+            }
+        } else {
+            $sabeelEntries = EstablishmentSabeelModel::where('establishment_id', $establishmentId)
+                ->orderBy('year', 'asc')
+                ->get();
+            
+            $receipts = ReceiptModel::where('establishment_id', $establishmentId)
+                ->where('status', 'active')
+                ->select('year', DB::raw('SUM(amount) as paid'))
+                ->groupBy('year')
+                ->get()
+                ->keyBy('year');
+
+            foreach ($sabeelEntries as $entry) {
+                $year = $entry->year;
+                $sabeel = (float) $entry->sabeel;
+                $paid = (float) ($receipts->get($year)->paid ?? 0);
+                $due = max(0, $sabeel - $paid);
+                if ($due > 0) {
+                    $yearDues[] = ['year' => $year, 'due' => $due];
+                }
+            }
+        }
+
+        return $yearDues;
+    }
+
+    /**
+     * Split cash amount into chunks of 9,000-10,000 (multiples of 100)
+     */
+    private function splitCashAmount(float $amount): array
+    {
+        $chunks = [];
+        $remaining = $amount;
+
+        while ($remaining > 0) {
+            if ($remaining <= 10000) {
+                // Last chunk - can be any amount <= 10000
+                $chunks[] = $remaining;
+                break;
+            } else {
+                // Chunk of 9,000-10,000 (preferably 10,000, but must be multiples of 100)
+                // Round down to nearest 100, but ensure at least 9000
+                $chunk = floor($remaining / 100) * 100;
+                if ($chunk > 10000) {
+                    $chunk = 10000;
+                } elseif ($chunk < 9000) {
+                    $chunk = 10000;
+                }
+                $chunks[] = $chunk;
+                $remaining -= $chunk;
+            }
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * Get family members (HOF + FMs) ordered by age DESC
+     */
+    private function getFamilyMembersForReceipts(int $familyId): array
+    {
+        $hof = MumineenModel::where('family_id', $familyId)
+            ->where('hof_type', 'HOF')
+            ->where('status', 'active')
+            ->first();
+
+        $fms = MumineenModel::where('family_id', $familyId)
+            ->where('hof_type', 'FM')
+            ->where('status', 'active')
+            ->orderBy('age', 'desc')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        $members = [];
+        if ($hof) {
+            $members[] = $hof;
+        }
+        foreach ($fms as $fm) {
+            $members[] = $fm;
+        }
+
+        return $members;
+    }
+
+    /**
+     * Get establishment partners
+     */
+    private function getEstablishmentPartners(int $establishmentId): array
+    {
+        $partners = MumineenEstablishmentModel::where('establishment_id', $establishmentId)
+            ->get();
+
+        $partnerFamilies = [];
+        foreach ($partners as $partner) {
+            $partnerFamilies[] = (int) $partner->family_id;
+        }
+
+        return array_unique($partnerFamilies);
+    }
+
+    /**
+     * Check if receipt with same name exists on date
+     */
+    private function checkReceiptExistsForNameAndDate(string $name, string $date): bool
+    {
+        return ReceiptModel::where('name', $name)
+            ->whereDate('date', $date)
+            ->exists();
+    }
+
+    /**
+     * Create a single receipt for a year
+     */
+    private function createReceiptForYear(string $type, ?int $familyId, ?int $establishmentId, string $year, float $amount, Request $request, string $date): ?array
+    {
+        $name = null;
+        $its = null;
+
+        if ($type === 'family') {
+            $hof = MumineenModel::where('family_id', $familyId)
+                ->where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->first();
+            if (!$hof) return null;
+            $name = $hof->name;
+            $its = $hof->its;
+        } else {
+            $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+            if (!$est) return null;
+            $name = $est->name;
+            $its = null;
+        }
+
+        // Check if receipt already exists for this name and date
+        if ($this->checkReceiptExistsForNameAndDate($name, $date)) {
+            return null; // Skip this receipt
+        }
+
+        $receiptNo = $this->nextReceiptNo();
+
+        $receipt = ReceiptModel::create([
+            'family_id'        => $familyId,
+            'establishment_id' => $establishmentId,
+            'receipt_no'       => $receiptNo,
+            'date'             => $date,
+            'deposit_id'       => 1, // Default
+            'name'             => $name,
+            'its'              => $its,
+            'mode'             => $request->mode,
+            'transaction_no'   => $request->trans_id ?? null,
+            'transaction_date' => $request->trans_date ?? null,
+            'bank'             => $request->bank ?? null,
+            'cheque_no'        => $request->cheque_no ?? null,
+            'cheque_date'      => $request->cheque_date ?? null,
+            'ifsc'             => $request->ifsc ?? null,
+            'amount'           => $amount,
+            'year'             => $year,
+            'comment'          => $request->remarks ?? null,
+            'status'           => 'active',
+            'type'             => $type,
+            'updated_by'       => (int) Auth::id(),
+        ]);
+
+        return $this->mapReceipt($receipt);
+    }
+
+    /**
+     * Create cash split receipts (for amounts > 10,000)
+     */
+    private function createCashSplitReceipts(string $type, ?int $familyId, ?int $establishmentId, string $year, float $amount, Request $request, string $date): array
+    {
+        $receipts = [];
+        $chunks = $this->splitCashAmount($amount);
+        $chunkIndex = 0;
+
+        if ($type === 'family') {
+            $members = $this->getFamilyMembersForReceipts($familyId);
+            foreach ($chunks as $chunk) {
+                // Find available member (one without receipt on this date)
+                $memberUsed = false;
+                foreach ($members as $member) {
+                    if (!$this->checkReceiptExistsForNameAndDate($member->name, $date)) {
+                        $receipt = $this->createReceiptForFamilyMember($familyId, $establishmentId, $year, $chunk, $member, $request, $date);
+                        if ($receipt) {
+                            $receipts[] = $receipt;
+                            $memberUsed = true;
+                            break;
+                        }
+                    }
+                }
+                if (!$memberUsed) {
+                    // No available member, skip this chunk (or save to advance_paid)
+                    break;
+                }
+            }
+        } else {
+            // For establishments
+            $partners = $this->getEstablishmentPartners($establishmentId);
+            if (!empty($partners)) {
+                // Use partners' families
+                $allMembers = [];
+                foreach ($partners as $partnerFamilyId) {
+                    $partnerMembers = $this->getFamilyMembersForReceipts($partnerFamilyId);
+                    foreach ($partnerMembers as $member) {
+                        $allMembers[] = $member;
+                    }
+                }
+                foreach ($chunks as $chunk) {
+                    $memberUsed = false;
+                    foreach ($allMembers as $member) {
+                        if (!$this->checkReceiptExistsForNameAndDate($member->name, $date)) {
+                            $receipt = $this->createReceiptForFamilyMember(null, $establishmentId, $year, $chunk, $member, $request, $date, (int) $member->family_id);
+                            if ($receipt) {
+                                $receipts[] = $receipt;
+                                $memberUsed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!$memberUsed) break;
+                }
+            } else {
+                // No partners - use establishment name (multiple receipts)
+                $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+                if ($est) {
+                    foreach ($chunks as $chunk) {
+                        // Check if receipt exists for this name and date
+                        if (!$this->checkReceiptExistsForNameAndDate($est->name, $date)) {
+                            $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $chunk, $request, $date);
+                            if ($receipt) {
+                                $receipts[] = $receipt;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $receipts;
+    }
+
+    /**
+     * Create receipt for a family member (helper for cash splitting)
+     */
+    private function createReceiptForFamilyMember(?int $familyId, ?int $establishmentId, string $year, float $amount, $member, Request $request, string $date, ?int $memberFamilyId = null): ?array
+    {
+        $actualFamilyId = $memberFamilyId ?? $familyId;
+        
+        // Check if receipt already exists for this name and date
+        if ($this->checkReceiptExistsForNameAndDate($member->name, $date)) {
+            return null;
+        }
+
+        $receiptNo = $this->nextReceiptNo();
+
+        $receipt = ReceiptModel::create([
+            'family_id'        => $actualFamilyId,
+            'establishment_id' => $establishmentId,
+            'receipt_no'       => $receiptNo,
+            'date'             => $date,
+            'deposit_id'       => 1,
+            'name'             => $member->name,
+            'its'              => $member->its,
+            'mode'             => $request->mode,
+            'transaction_no'   => $request->trans_id ?? null,
+            'transaction_date' => $request->trans_date ?? null,
+            'bank'             => $request->bank ?? null,
+            'cheque_no'        => $request->cheque_no ?? null,
+            'cheque_date'      => $request->cheque_date ?? null,
+            'ifsc'             => $request->ifsc ?? null,
+            'amount'           => $amount,
+            'year'             => $year,
+            'comment'          => $request->remarks ?? null,
+            'status'           => 'active',
+            'type'             => $establishmentId ? 'establishment' : 'family',
+            'updated_by'       => (int) Auth::id(),
+        ]);
+
+        return $this->mapReceipt($receipt);
+    }
+
+    /**
+     * Save excess amount to advance_paid table
+     */
+    private function saveToAdvancePaid(string $type, ?int $familyId, ?int $establishmentId, float $amount, string $mode, string $date, ?string $remarks): ?array
+    {
+        $advancePaid = AdvancePaidModel::create([
+            'type'            => $type,
+            'family_id'       => $familyId,
+            'establishment_id'=> $establishmentId,
+            'amount'          => $amount,
+            'mode'            => $mode,
+            'date'            => $date,
+            'remarks'         => $remarks,
+            'status'          => 'pending',
+            'user_id'         => Auth::id(),
+        ]);
+
+        return [
+            'id' => (string) $advancePaid->id,
+            'amount' => (string) $advancePaid->amount,
+            'status' => $advancePaid->status,
+            'date' => (string) $advancePaid->date,
         ];
     }
 

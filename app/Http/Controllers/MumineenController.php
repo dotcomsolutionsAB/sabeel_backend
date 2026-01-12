@@ -18,6 +18,7 @@ use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use App\Models\AdvancePaidModel;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -565,6 +566,10 @@ class MumineenController extends Controller
             ->where('status', 'active')
             ->sum('amount');
 
+        // Include advance_paid (pending only) - since advance_paid doesn't have year, we can't allocate per year
+        // For year-wise calculations, we only consider receipts
+        // Advance_paid is considered in total due calculations
+
         $due = max(0, $sabeel - $paid);
 
         return [$sabeel, $due];
@@ -582,6 +587,10 @@ class MumineenController extends Controller
             ->where('year', $year)
             ->where('status', 'active')
             ->sum('amount');
+
+        // Include advance_paid (pending only) - since advance_paid doesn't have year, we can't allocate per year
+        // For year-wise calculations, we only consider receipts
+        // Advance_paid is considered in total due calculations
 
         $dueSum = max(0, $sabeelSum - $paidSum);
 
