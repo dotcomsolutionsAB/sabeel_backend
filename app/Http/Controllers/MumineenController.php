@@ -354,7 +354,8 @@ class MumineenController extends Controller
                         'name'             => $estName,
                     'sabeel'           => (string)$estSabeelCur,
                     'due'              => (string)$estDueCur,
-                ];
+                    ];
+                }
             }
 
             // Calculate prev_due as sum of dues for all years before current year for all establishments
