@@ -74,6 +74,63 @@ class EstablishmentSabeelController extends Controller
         }
     }
 
+    /**
+     * UPDATE by establishment_id and year
+     * POST /establishment_sabeel/update/{establishment_id}
+     * Body: { "year": "2024-25", "sabeel": 6000 }
+     */
+    public function update(Request $request, $establishment_id)
+    {
+        try {
+            $est = $this->resolveEstablishment($establishment_id);
+            if (!$est) {
+                return $this->error('Invalid establishment_id. Establishment not found.', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'year'   => 'required|string|max:10',
+                'sabeel' => 'required|numeric|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $year = $request->year;
+            $sabeel = (float) $request->sabeel;
+
+            // Find sabeel entry by establishment_id and year
+            $row = EstablishmentSabeelModel::where('establishment_id', $establishment_id)
+                ->where('year', $year)
+                ->first();
+
+            if (!$row) {
+                return $this->error('Sabeel entry not found for this establishment and year.', 404);
+            }
+
+            // Validation: sabeel cannot be less than amount already paid in receipts for that year
+            $paidThisYear = (float) ReceiptModel::where('establishment_id', $establishment_id)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount');
+
+            if ($sabeel < $paidThisYear) {
+                return $this->error("Sabeel cannot be less than the amount already paid ({$paidThisYear}) for this year.", 422);
+            }
+
+            // Update the sabeel entry
+            $row->sabeel = (int) $sabeel;
+            $row->updated_by = (int) Auth::id();
+            $row->save();
+
+            $payload = $this->buildEstablishmentSummaryPayload($establishment_id);
+
+            return $this->success('Data saved successfully', $payload, 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Establishment sabeel update failed');
+        }
+    }
 
     public function edit(Request $request, $establishment_id, $id)
     {

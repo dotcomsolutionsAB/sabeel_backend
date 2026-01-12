@@ -90,6 +90,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     Route::prefix('establishment_sabeel')->group(function () {
         Route::post('/create/{establishment_id}', [EstablishmentSabeelController::class, 'create']);
         Route::post('/retrieve/{establishment_id}/{id?}', [EstablishmentSabeelController::class, 'fetch']);
+        Route::post('/update/{establishment_id}', [EstablishmentSabeelController::class, 'update']);
         Route::post('/update/{establishment_id}/{id}', [EstablishmentSabeelController::class, 'edit']);
         Route::delete('/delete/{establishment_id}/{id}', [EstablishmentSabeelController::class, 'delete']);
     });
