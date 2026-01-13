@@ -397,6 +397,17 @@ class WhatsAppController extends Controller
             }
 
             // Prepare data for blade template
+            $chequeDate = '';
+            if ($receipt->mode === 'cheque') {
+                if ($receipt->cheque_date && $receipt->cheque_date !== '0000-00-00' && $receipt->cheque_date !== '1970-01-01') {
+                    $chequeDate = date('d-m-Y', strtotime($receipt->cheque_date));
+                }
+            } else {
+                if ($receipt->transaction_date && $receipt->transaction_date !== '0000-00-00' && $receipt->transaction_date !== '1970-01-01') {
+                    $chequeDate = date('d-m-Y', strtotime($receipt->transaction_date));
+                }
+            }
+
             $data = [
                 'receiptNumber' => $receipt->receipt_no,
                 'date' => date('d-m-Y', strtotime($receipt->date)),
@@ -409,9 +420,7 @@ class WhatsAppController extends Controller
                 'year' => $receipt->year,
                 'bankName' => $receipt->bank ?? '',
                 'receivedBy' => strtoupper($receipt->establishment_id ?? 'ADMINISTRATION'),
-                'chequeDate' => $receipt->mode === 'cheque' 
-                    ? date('d-m-Y', strtotime($receipt->cheque_date)) 
-                    : date('d-m-Y', strtotime($receipt->transaction_date)),
+                'chequeDate' => $chequeDate,
             ];
 
             // Render blade view to HTML
@@ -430,8 +439,10 @@ class WhatsAppController extends Controller
             // Write HTML to PDF
             $mpdf->WriteHTML($html);
 
-            // Create filename
-            $filename = 'receipt_' . $receipt->receipt_no . '_' . time() . '.pdf';
+            // Create filename: {its}_ddmmyyyy
+            $its = $receipt->its ?? 'unknown';
+            $dateFormatted = date('dmY', strtotime($receipt->date));
+            $filename = $its . '_' . $dateFormatted . '.pdf';
             
             // Ensure directory exists
             $directory = 'uploads/receipt/whatsapp';
@@ -486,6 +497,17 @@ class WhatsAppController extends Controller
                     $mpdf->AddPage();
                 }
 
+                $chequeDate = '';
+                if ($receipt->mode === 'cheque') {
+                    if ($receipt->cheque_date && $receipt->cheque_date !== '0000-00-00' && $receipt->cheque_date !== '1970-01-01') {
+                        $chequeDate = date('d-m-Y', strtotime($receipt->cheque_date));
+                    }
+                } else {
+                    if ($receipt->transaction_date && $receipt->transaction_date !== '0000-00-00' && $receipt->transaction_date !== '1970-01-01') {
+                        $chequeDate = date('d-m-Y', strtotime($receipt->transaction_date));
+                    }
+                }
+
                 $data = [
                     'receiptNumber' => $receipt->receipt_no,
                     'date' => date('d-m-Y', strtotime($receipt->date)),
@@ -498,9 +520,7 @@ class WhatsAppController extends Controller
                     'year' => $receipt->year,
                     'bankName' => $receipt->bank ?? '',
                     'receivedBy' => strtoupper($receipt->establishment_id ?? 'ADMINISTRATION'),
-                    'chequeDate' => $receipt->mode === 'cheque' 
-                        ? date('d-m-Y', strtotime($receipt->cheque_date)) 
-                        : date('d-m-Y', strtotime($receipt->transaction_date)),
+                    'chequeDate' => $chequeDate,
                 ];
 
                 $html = view('receipt', $data)->render();
@@ -508,7 +528,11 @@ class WhatsAppController extends Controller
             }
 
             // Save combined PDF
-            $filename = 'combined_receipts_' . time() . '.pdf';
+            // Use first receipt's ITS and date for filename
+            $firstReceipt = $receipts->first();
+            $its = $firstReceipt->its ?? 'combined';
+            $dateFormatted = date('dmY', strtotime($firstReceipt->date));
+            $filename = $its . '_' . $dateFormatted . '.pdf';
             $directory = 'uploads/receipt/whatsapp';
             if (!Storage::disk('public')->exists($directory)) {
                 Storage::disk('public')->makeDirectory($directory, 0755, true);

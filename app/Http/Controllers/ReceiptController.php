@@ -649,6 +649,17 @@ class ReceiptController extends Controller
             }
 
             // Prepare data for the blade template
+            $chequeDate = '';
+            if ($receipt->mode === 'cheque') {
+                if ($receipt->cheque_date && $receipt->cheque_date !== '0000-00-00' && $receipt->cheque_date !== '1970-01-01') {
+                    $chequeDate = date('d-m-Y', strtotime($receipt->cheque_date));
+                }
+            } else {
+                if ($receipt->transaction_date && $receipt->transaction_date !== '0000-00-00' && $receipt->transaction_date !== '1970-01-01') {
+                    $chequeDate = date('d-m-Y', strtotime($receipt->transaction_date));
+                }
+            }
+
             $data = [
                 'receiptNumber' => $receipt->receipt_no,
                 'date' => date('d-m-Y', strtotime($receipt->date)),
@@ -661,9 +672,7 @@ class ReceiptController extends Controller
                 'year' => $receipt->year,
                 'bankName' => $receipt->bank ?? '',
                 'receivedBy' => strtoupper($receipt->establishment_id ?? 'ADMINISTRATION'),
-                'chequeDate' => $receipt->mode === 'cheque' 
-                    ? date('d-m-Y', strtotime($receipt->cheque_date)) 
-                    : date('d-m-Y', strtotime($receipt->transaction_date)),
+                'chequeDate' => $chequeDate,
             ];
 
             // Render blade view to HTML
@@ -694,7 +703,10 @@ $mpdf = new \Mpdf\Mpdf([
             $mpdf->WriteHTML($html);
 
             // Create filename
-            $filename = 'receipt_' . $receipt->receipt_no . '_' . time() . '.pdf';
+            // Create filename: {its}_ddmmyyyy
+            $its = $receipt->its ?? 'unknown';
+            $dateFormatted = date('dmY', strtotime($receipt->date));
+            $filename = $its . '_' . $dateFormatted . '.pdf';
             
             // Ensure directory exists
             $directory = 'uploads/receipt/print';
