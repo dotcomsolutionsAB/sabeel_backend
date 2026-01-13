@@ -419,6 +419,7 @@ class WhatsAppController extends Controller
     private function uploadQrImage(): ?string
     {
         try {
+            // QR image path: storage/uploads/qr.jpg (relative to storage/app/public for public disk)
             $qrPath = 'uploads/qr.jpg';
             $accessToken = config('whatsapp.access_token');
             $apiVersion = config('whatsapp.api_version');
@@ -429,14 +430,23 @@ class WhatsAppController extends Controller
                 return null;
             }
 
-            // Check if file exists
+            // Check if file exists - try public disk first (storage/app/public/uploads/qr.jpg)
             $fullPath = Storage::disk('public')->path($qrPath);
             if (!file_exists($fullPath)) {
-                Log::error('QR image file not found', ['path' => $fullPath, 'qr_path' => $qrPath]);
-                return null;
+                // Try alternative path: storage/uploads/qr.jpg (using local disk)
+                $fullPath = storage_path('uploads/qr.jpg');
+                if (!file_exists($fullPath)) {
+                    Log::error('QR image file not found', [
+                        'tried_public' => Storage::disk('public')->path($qrPath),
+                        'tried_storage' => $fullPath,
+                    ]);
+                    return null;
+                }
+                // Use direct file path for upload
+                return $this->uploadMediaDirect($fullPath, $accessToken, $apiVersion, $baseUrl, 'image/jpeg');
             }
 
-            Log::info('Uploading QR image', ['path' => $qrPath]);
+            Log::info('Uploading QR image', ['path' => $qrPath, 'full_path' => $fullPath]);
 
             // Upload image with image/jpeg MIME type
             $mediaId = $this->uploadMedia($qrPath, $accessToken, $apiVersion, $baseUrl, 'image/jpeg');
@@ -453,6 +463,48 @@ class WhatsAppController extends Controller
             Log::error('QR image upload failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Upload media file directly from absolute path
+     */
+    private function uploadMediaDirect(string $fullPath, string $accessToken, string $apiVersion, string $baseUrl, string $mediaType = 'image/jpeg'): ?string
+    {
+        try {
+            if (!file_exists($fullPath)) {
+                Log::error('Media file not found for upload', ['path' => $fullPath]);
+                return null;
+            }
+
+            $fileName = basename($fullPath);
+
+            // Upload media
+            $uploadUrl = "{$baseUrl}/{$apiVersion}/" . config('whatsapp.phone_number_id') . "/media";
+            
+            $response = Http::withToken($accessToken)
+                ->attach('file', file_get_contents($fullPath), $fileName, [
+                    'Content-Type' => $mediaType,
+                ])
+                ->post($uploadUrl, [
+                    'messaging_product' => 'whatsapp',
+                    'type' => $mediaType,
+                ]);
+
+            if ($response->successful() && isset($response->json()['id'])) {
+                return $response->json()['id'];
+            } else {
+                Log::error('Media upload failed', [
+                    'response' => $response->json(),
+                ]);
+                return null;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('Media upload exception', [
+                'error' => $e->getMessage(),
             ]);
             return null;
         }
