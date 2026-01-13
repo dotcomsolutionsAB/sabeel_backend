@@ -11,6 +11,12 @@ use App\Models\MumineenModel;
 use App\Models\EstablishmentModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\WhatsAppCampaignLogModel;
+use App\Models\YearModel;
+use App\Models\MumineenSabeelModel;
+use App\Models\EstablishmentSabeelModel;
+use App\Models\AdvancePaidModel;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
 
 class WhatsAppController extends Controller
@@ -825,5 +831,466 @@ class WhatsAppController extends Controller
             $result .= ' ' . $this->numberToWords($remainder);
         }
         return $result;
+    }
+
+    /**
+     * Send due follow-up messages to families and establishments
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sendDueFollowup(Request $request)
+    {
+        try {
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'mode' => 'required|in:simulate,test,beta_test,live',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $mode = $request->input('mode');
+            $currentYear = $this->getCurrentYear();
+
+            // Get families and establishments with due
+            $familiesWithDue = $this->getFamiliesWithDue($currentYear);
+            $establishmentsWithDue = $this->getEstablishmentsWithDue($currentYear);
+
+            // Build message list
+            $messages = [];
+            
+            // Process families
+            foreach ($familiesWithDue as $family) {
+                $recipients = $this->getFamilyRecipients($family->family_id);
+                foreach ($recipients as $recipient) {
+                    $template = $family['prev_due'] > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                    $variables = $this->formatDueMessageVariables(
+                        $family,
+                        'family',
+                        $family->family_id,
+                        null,
+                        $recipient,
+                        $template
+                    );
+                    
+                    $messages[] = [
+                        'type' => 'family',
+                        'family_id' => $family->family_id,
+                        'template' => $template,
+                        'recipient' => $recipient,
+                        'variables' => $variables,
+                    ];
+                }
+            }
+
+            // Process establishments
+            foreach ($establishmentsWithDue as $establishment) {
+                $recipients = $this->getEstablishmentRecipients($establishment->establishment_id);
+                foreach ($recipients as $recipient) {
+                    $template = $establishment['prev_due'] > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                    $variables = $this->formatDueMessageVariables(
+                        $establishment,
+                        'establishment',
+                        null,
+                        $establishment->establishment_id,
+                        $recipient,
+                        $template
+                    );
+                    
+                    $messages[] = [
+                        'type' => 'establishment',
+                        'establishment_id' => $establishment->establishment_id,
+                        'template' => $template,
+                        'recipient' => $recipient,
+                        'variables' => $variables,
+                    ];
+                }
+            }
+
+            // Handle different modes
+            if ($mode === 'simulate') {
+                return $this->success('Simulation completed', [
+                    'total_families' => $familiesWithDue->count(),
+                    'total_establishments' => $establishmentsWithDue->count(),
+                    'total_messages' => count($messages),
+                    'messages' => $messages,
+                ]);
+            }
+
+            // For test and beta_test, select random samples
+            if ($mode === 'test' || $mode === 'beta_test') {
+                $testPhones = $mode === 'test' 
+                    ? config('whatsapp.test_phone', '')
+                    : config('whatsapp.beta_test_phone', '');
+                
+                if (empty($testPhones)) {
+                    return $this->error('Test phone numbers not configured in .env', 400);
+                }
+
+                $testPhoneArray = array_map('trim', explode(',', $testPhones));
+                
+                // Get one random family message and one random establishment message
+                $familyMessages = array_filter($messages, fn($m) => $m['type'] === 'family');
+                $estMessages = array_filter($messages, fn($m) => $m['type'] === 'establishment');
+                
+                $selectedMessages = [];
+                if (!empty($familyMessages)) {
+                    $selectedMessages[] = $familyMessages[array_rand($familyMessages)];
+                }
+                if (!empty($estMessages)) {
+                    $selectedMessages[] = $estMessages[array_rand($estMessages)];
+                }
+
+                // Override recipient phones with test phones
+                foreach ($selectedMessages as &$msg) {
+                    $msg['recipient']['phone'] = $testPhoneArray[0] ?? $testPhoneArray[array_rand($testPhoneArray)];
+                }
+
+                $messages = $selectedMessages;
+            }
+
+            // Send messages
+            $results = $this->sendDueFollowupMessages($messages, $mode);
+
+            return $this->success('Due follow-up campaign completed', $results);
+
+        } catch (\Throwable $e) {
+            Log::error('Due follow-up campaign failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->serverError($e, 'Due follow-up campaign failed');
+        }
+    }
+
+    /**
+     * Get current year from database
+     */
+    private function getCurrentYear(): string
+    {
+        $currentYear = YearModel::where('is_current', 1)->value('year');
+        if (!$currentYear) {
+            $currentYear = YearModel::orderBy('year', 'desc')->value('year');
+        }
+        return $currentYear ?: (string) date('Y');
+    }
+
+    /**
+     * Get families with due amounts
+     */
+    private function getFamiliesWithDue(string $currentYear)
+    {
+        $activeHofs = MumineenModel::where('hof_type', 'HOF')
+            ->where('status', 'active')
+            ->get();
+
+        $familiesWithDue = collect();
+
+        foreach ($activeHofs as $hof) {
+            $dueData = $this->calculateFamilyDue($hof->family_id, $currentYear);
+            
+            if ($dueData['due'] > 0) {
+                $dueData['name'] = $hof->name;
+                $dueData['its'] = $hof->its;
+                $dueData['sector'] = $hof->sector;
+                $dueData['family_id'] = $hof->family_id;
+                $familiesWithDue->push((object) $dueData);
+            }
+        }
+
+        return $familiesWithDue;
+    }
+
+    /**
+     * Get establishments with due amounts
+     */
+    private function getEstablishmentsWithDue(string $currentYear)
+    {
+        $establishments = EstablishmentModel::where('status', 'active')->get();
+        $establishmentsWithDue = collect();
+
+        foreach ($establishments as $est) {
+            $dueData = $this->calculateEstablishmentDue($est->establishment_id, $currentYear);
+            
+            if ($dueData['due'] > 0) {
+                $dueData['name'] = $est->name;
+                $dueData['establishment_id'] = $est->establishment_id;
+                $establishmentsWithDue->push((object) $dueData);
+            }
+        }
+
+        return $establishmentsWithDue;
+    }
+
+    /**
+     * Calculate family due amounts
+     */
+    private function calculateFamilyDue(int $familyId, string $currentYear): array
+    {
+        // Current year sabeel
+        $sabeel = (float) MumineenSabeelModel::where('family_id', $familyId)
+            ->where('year', $currentYear)
+            ->value('sabeel') ?? 0;
+
+        // Current year paid (receipts only, year-wise)
+        $paid = (float) ReceiptModel::where('family_id', $familyId)
+            ->where('year', $currentYear)
+            ->where('status', 'active')
+            ->sum('amount') ?? 0;
+
+        // Current year due
+        $due = max(0, $sabeel - $paid);
+
+        // Previous years due
+        $prevDue = $this->calculateFamilyPrevDue($familyId, $currentYear);
+
+        return [
+            'sabeel' => $sabeel,
+            'paid' => $paid,
+            'due' => $due,
+            'prev_due' => $prevDue,
+        ];
+    }
+
+    /**
+     * Calculate establishment due amounts
+     */
+    private function calculateEstablishmentDue(int $establishmentId, string $currentYear): array
+    {
+        // Current year sabeel
+        $sabeel = (float) EstablishmentSabeelModel::where('establishment_id', $establishmentId)
+            ->where('year', $currentYear)
+            ->value('sabeel') ?? 0;
+
+        // Current year paid (receipts only, year-wise)
+        $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
+            ->where('year', $currentYear)
+            ->where('status', 'active')
+            ->sum('amount') ?? 0;
+
+        // Current year due
+        $due = max(0, $sabeel - $paid);
+
+        // Previous years due
+        $prevDue = $this->calculateEstablishmentPrevDue($establishmentId, $currentYear);
+
+        return [
+            'sabeel' => $sabeel,
+            'paid' => $paid,
+            'due' => $due,
+            'prev_due' => $prevDue,
+        ];
+    }
+
+    /**
+     * Calculate family previous years due
+     */
+    private function calculateFamilyPrevDue(int $familyId, string $currentYear): float
+    {
+        $sabeelEntries = MumineenSabeelModel::where('family_id', $familyId)
+            ->where('year', '<', $currentYear)
+            ->get();
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $entry) {
+            $year = $entry->year;
+            $sabeel = (float) $entry->sabeel;
+            $paid = (float) ReceiptModel::where('family_id', $familyId)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount') ?? 0;
+            $due = max(0, $sabeel - $paid);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
+    }
+
+    /**
+     * Calculate establishment previous years due
+     */
+    private function calculateEstablishmentPrevDue(int $establishmentId, string $currentYear): float
+    {
+        $sabeelEntries = EstablishmentSabeelModel::where('establishment_id', $establishmentId)
+            ->where('year', '<', $currentYear)
+            ->get();
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $entry) {
+            $year = $entry->year;
+            $sabeel = (float) $entry->sabeel;
+            $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount') ?? 0;
+            $due = max(0, $sabeel - $paid);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
+    }
+
+    /**
+     * Get family recipients (HOF)
+     */
+    private function getFamilyRecipients(int $familyId): array
+    {
+        $hof = MumineenModel::where('family_id', $familyId)
+            ->where('hof_type', 'HOF')
+            ->where('status', 'active')
+            ->first();
+
+        if (!$hof || !$hof->mobile) {
+            return [];
+        }
+
+        return [[
+            'phone' => $this->formatPhoneNumber($hof->mobile),
+            'name' => $hof->name,
+        ]];
+    }
+
+    /**
+     * Get establishment recipients (all partners)
+     */
+    private function getEstablishmentRecipients(int $establishmentId): array
+    {
+        $links = MumineenEstablishmentModel::where('establishment_id', $establishmentId)->get();
+        $recipients = [];
+
+        foreach ($links as $link) {
+            $hof = MumineenModel::where('family_id', $link->family_id)
+                ->where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->first();
+
+            if ($hof && $hof->mobile) {
+                $recipients[] = [
+                    'phone' => $this->formatPhoneNumber($hof->mobile),
+                    'name' => $hof->name,
+                ];
+            }
+        }
+
+        return $recipients;
+    }
+
+    /**
+     * Format message variables for due follow-up
+     */
+    private function formatDueMessageVariables($data, string $type, ?int $familyId, ?int $establishmentId, array $recipient, string $template): array
+    {
+        $variables = [];
+
+        // Name
+        $variables[] = $recipient['name'] ?? $data->name;
+
+        // ITS / Establishment name
+        if ($type === 'family') {
+            $variables[] = 'ITS : ' . ($data->its ?? '');
+        } else {
+            $estName = EstablishmentModel::where('establishment_id', $establishmentId)->value('name') ?? '';
+            $variables[] = 'c/o : ' . $estName;
+        }
+
+        // Hub (current year sabeel amount)
+        $variables[] = 'Rs. ' . number_format($data->sabeel, 2);
+
+        // Paid
+        $variables[] = 'Rs. ' . number_format($data->paid, 2);
+
+        // Due
+        $variables[] = 'Rs. ' . number_format($data->due, 2);
+
+        // Prev_due (only for sabeel_overdue template)
+        if ($template === 'sabeel_overdue') {
+            $prevDue = $data->prev_due ?? 0;
+            $variables[] = 'Rs. ' . number_format($prevDue, 2);
+        }
+
+        return $variables;
+    }
+
+    /**
+     * Send due follow-up messages
+     */
+    private function sendDueFollowupMessages(array $messages, string $mode): array
+    {
+        $results = [
+            'total' => count($messages),
+            'success' => 0,
+            'failed' => 0,
+            'details' => [],
+        ];
+
+        // Group messages by template for logging
+        $templateGroups = [];
+        foreach ($messages as $msg) {
+            $template = $msg['template'];
+            if (!isset($templateGroups[$template])) {
+                $templateGroups[$template] = [];
+            }
+            $templateGroups[$template][] = $msg;
+        }
+
+        // Send messages and log campaigns
+        foreach ($templateGroups as $templateName => $templateMessages) {
+            $recipientDetails = [];
+            $successCount = 0;
+            $failureCount = 0;
+
+            foreach ($templateMessages as $msg) {
+                $result = $this->sendTemplateMessage(
+                    $msg['recipient']['phone'],
+                    $templateName,
+                    $msg['variables']
+                );
+
+                $status = $result['success'] ? 'sent' : 'failed';
+                if ($result['success']) {
+                    $successCount++;
+                } else {
+                    $failureCount++;
+                }
+
+                $recipientDetails[] = [
+                    'phone' => $msg['recipient']['phone'],
+                    'name' => $msg['recipient']['name'],
+                    'status' => $status,
+                    'error_message' => $result['error'] ?? null,
+                    'sent_at' => $result['success'] ? now()->toDateTimeString() : null,
+                ];
+
+                $results['details'][] = [
+                    'type' => $msg['type'],
+                    'template' => $templateName,
+                    'recipient' => $msg['recipient']['name'],
+                    'phone' => $msg['recipient']['phone'],
+                    'status' => $status,
+                    'error' => $result['error'] ?? null,
+                ];
+            }
+
+            // Log campaign
+            WhatsAppCampaignLogModel::create([
+                'campaign_name' => 'due_followup',
+                'template_name' => $templateName,
+                'recipient_count' => count($templateMessages),
+                'success_count' => $successCount,
+                'failure_count' => $failureCount,
+                'recipient_details' => $recipientDetails,
+                'message_variables' => $templateMessages[0]['variables'] ?? [],
+                'type' => $templateMessages[0]['type'] ?? null,
+                'status' => $failureCount === 0 ? 'completed' : ($successCount > 0 ? 'completed' : 'failed'),
+            ]);
+
+            $results['success'] += $successCount;
+            $results['failed'] += $failureCount;
+        }
+
+        return $results;
     }
 }

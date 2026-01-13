@@ -16,6 +16,7 @@ use App\Http\Controllers\MumineenEstablishmentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MigrateController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\WhatsAppController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -150,5 +151,10 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/mumineen/merge-family/execute', [ImportController::class, 'mergeFamilyExecute']);
         Route::post('/sabeel-receipts-check/dry-run', [ImportController::class, 'sabeelReceiptsCheckDryRun']);
         Route::post('/logs/retrieve/{id?}', [ImportLogController::class, 'fetch']);
+    });
+
+    // whatsapp route
+    Route::prefix('whatsapp')->group(function () {
+        Route::post('/due-followup', [WhatsAppController::class, 'sendDueFollowup']);
     });
 });
