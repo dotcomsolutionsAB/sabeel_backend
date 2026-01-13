@@ -286,6 +286,21 @@ class WhatsAppController extends Controller
                 }
             }
 
+            // Add image header if provided (for due follow-up messages)
+            if ($imageMediaId) {
+                $payload['template']['components'][] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        [
+                            'type' => 'image',
+                            'image' => [
+                                'id' => $imageMediaId,
+                            ],
+                        ],
+                    ],
+                ];
+            }
+
             // Add PDF document attachment if provided
             if ($pdfPath) {
                 // Upload media to Meta API first to get media ID
@@ -346,17 +361,16 @@ class WhatsAppController extends Controller
      * @param string $baseUrl
      * @return string|null Media ID
      */
-    private function uploadMedia(string $filePath, string $accessToken, string $apiVersion, string $baseUrl): ?string
+    private function uploadMedia(string $filePath, string $accessToken, string $apiVersion, string $baseUrl, string $mediaType = 'application/pdf'): ?string
     {
         try {
             $fullPath = Storage::disk('public')->path($filePath);
             
             if (!file_exists($fullPath)) {
-                Log::error('PDF file not found for upload', ['path' => $fullPath]);
+                Log::error('Media file not found for upload', ['path' => $fullPath]);
                 return null;
             }
 
-            $mediaType = 'application/pdf';
             $fileName = basename($filePath);
 
             // Upload media
@@ -382,6 +396,35 @@ class WhatsAppController extends Controller
 
         } catch (\Throwable $e) {
             Log::error('Media upload exception', [
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Upload QR code image and get media ID
+     * 
+     * @return string|null Media ID
+     */
+    private function uploadQrImage(): ?string
+    {
+        try {
+            $qrPath = 'uploads/qr.jpg';
+            $accessToken = config('whatsapp.access_token');
+            $apiVersion = config('whatsapp.api_version');
+            $baseUrl = config('whatsapp.api_base_url');
+
+            if (!$accessToken) {
+                Log::error('WhatsApp access token not configured');
+                return null;
+            }
+
+            // Upload image with image/jpeg MIME type
+            return $this->uploadMedia($qrPath, $accessToken, $apiVersion, $baseUrl, 'image/jpeg');
+
+        } catch (\Throwable $e) {
+            Log::error('QR image upload failed', [
                 'error' => $e->getMessage(),
             ]);
             return null;
@@ -1240,6 +1283,12 @@ class WhatsAppController extends Controller
             'details' => [],
         ];
 
+        // Upload QR image once and reuse media ID for all messages
+        $qrImageMediaId = $this->uploadQrImage();
+        if (!$qrImageMediaId) {
+            Log::warning('Failed to upload QR image, continuing without image header');
+        }
+
         // Group messages by template for logging
         $templateGroups = [];
         foreach ($messages as $msg) {
@@ -1271,7 +1320,9 @@ class WhatsAppController extends Controller
                         $result = $this->sendTemplateMessage(
                             $msg['recipient']['phone'],
                             $templateName,
-                            $msg['variables']
+                            $msg['variables'],
+                            null, // No PDF for due follow-up
+                            $qrImageMediaId // QR image media ID
                         );
 
                         $status = $result['success'] ? 'sent' : 'failed';
