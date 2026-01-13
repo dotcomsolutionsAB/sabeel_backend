@@ -23,6 +23,7 @@ use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\AdvancePaidModel;
+use App\Http\Controllers\WhatsAppController;
 use Mpdf\Mpdf;
 
 class ReceiptController extends Controller
@@ -155,6 +156,34 @@ class ReceiptController extends Controller
             }
 
             DB::commit();
+
+            // Trigger WhatsApp notification (non-blocking)
+            try {
+                // Extract receipt IDs from created receipts array
+                // Structure: [['receipt' => ['id' => ...], 'name' => ..., 'amount' => ...], ...]
+                $receiptIds = [];
+                foreach ($createdReceipts as $receiptData) {
+                    if (isset($receiptData['receipt']['id'])) {
+                        $receiptIds[] = (int) $receiptData['receipt']['id'];
+                    }
+                }
+                
+                if (!empty($receiptIds)) {
+                    app(WhatsAppController::class)->sendReceipt(
+                        $receiptIds,
+                        $type,
+                        $familyId,
+                        $establishmentId
+                    );
+                }
+            } catch (\Throwable $e) {
+                // Log error but don't fail receipt creation
+                Log::error('WhatsApp notification failed', [
+                    'error' => $e->getMessage(),
+                    'receipt_ids' => $receiptIds ?? [],
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
 
             return $this->success('Receipt(s) created successfully', [
                 'receipts' => $createdReceipts,
