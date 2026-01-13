@@ -842,6 +842,11 @@ class WhatsAppController extends Controller
     public function sendDueFollowup(Request $request)
     {
         try {
+            // Check if due follow-up is enabled
+            if (!config('whatsapp.due_followup_enabled', false)) {
+                return $this->error('Due follow-up feature is disabled', 403);
+            }
+
             $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
                 'mode' => 'required|in:simulate,test,beta_test,live',
             ]);

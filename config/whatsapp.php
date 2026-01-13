@@ -8,4 +8,5 @@ return [
     'api_base_url' => env('WHATSAPP_API_BASE_URL', 'https://graph.facebook.com'),
     'test_phone' => env('WHATSAPP_TEST_PHONE', ''),
     'beta_test_phone' => env('WHATSAPP_BETA_TEST_PHONE', ''),
+    'due_followup_enabled' => env('WHATSAPP_DUE_FOLLOWUP_ENABLED', false),
 ];
