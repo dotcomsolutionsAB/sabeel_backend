@@ -404,8 +404,8 @@ class MigrateController extends Controller
                         $mode = 'cash'; // default
                         if ($paymentType === 'cheque') {
                             $mode = 'cheque';
-                        } elseif (in_array($paymentType, ['neft', 'upi'])) {
-                            $mode = 'neft'; // Map UPI to neft since enum doesn't have upi
+                        } elseif ($paymentType === 'neft') {
+                            $mode = 'neft';
                         }
 
                         // Map type: PERSONAL = family, ESTABLISHMENT = establishment
@@ -463,7 +463,7 @@ class MigrateController extends Controller
                         }
 
                         if (is_array($paymentDetails)) {
-                            // For UPI/NEFT
+                            // For NEFT
                             if (isset($paymentDetails['transaction_id'])) {
                                 $transactionNo = !empty($paymentDetails['transaction_id']) ? (string) $paymentDetails['transaction_id'] : null;
                             }
