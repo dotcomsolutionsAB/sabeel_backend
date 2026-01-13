@@ -227,7 +227,7 @@ class WhatsAppController extends Controller
      * @param string|null $pdfPath Path to PDF file for attachment
      * @return array
      */
-    private function sendTemplateMessage(string $to, string $templateName, array $variables, ?string $pdfPath = null): array
+    private function sendTemplateMessage(string $to, string $templateName, array $variables, ?string $pdfPath = null, ?string $imageMediaId = null): array
     {
         try {
             $phoneNumberId = config('whatsapp.phone_number_id');
