@@ -239,6 +239,9 @@ class WhatsAppController extends Controller
                 'to' => $to,
                 'template_name' => $templateName,
                 'has_pdf' => !empty($pdfPath),
+                'has_image' => !empty($imageMediaId),
+                'image_media_id' => $imageMediaId,
+                'variables_count' => count($variables),
             ]);
 
             if (!$phoneNumberId || !$accessToken) {
@@ -270,9 +273,15 @@ class WhatsAppController extends Controller
             ];
 
             // Add text parameters
+            // Variables array structure: ['name', 'its/est_name', 'hub', 'paid', 'due', 'prev_due?']
+            // For sabeel_due: 5 variables (name, its/est_name, hub, paid, due)
+            // For sabeel_overdue: 6 variables (name, its/est_name, hub, paid, due, prev_due)
+            // Note: All parameters are sent as text type. If template requires currency type for amounts,
+            // the template needs to be configured with text parameters, or we need to send currency parameters.
+            // For now, sending all as text to match most common template configuration.
             if (!empty($variables)) {
                 $textParams = [];
-                foreach ($variables as $key => $value) {
+                foreach ($variables as $value) {
                     $textParams[] = [
                         'type' => 'text',
                         'text' => (string) $value,
@@ -420,12 +429,30 @@ class WhatsAppController extends Controller
                 return null;
             }
 
+            // Check if file exists
+            $fullPath = Storage::disk('public')->path($qrPath);
+            if (!file_exists($fullPath)) {
+                Log::error('QR image file not found', ['path' => $fullPath, 'qr_path' => $qrPath]);
+                return null;
+            }
+
+            Log::info('Uploading QR image', ['path' => $qrPath]);
+
             // Upload image with image/jpeg MIME type
-            return $this->uploadMedia($qrPath, $accessToken, $apiVersion, $baseUrl, 'image/jpeg');
+            $mediaId = $this->uploadMedia($qrPath, $accessToken, $apiVersion, $baseUrl, 'image/jpeg');
+            
+            if ($mediaId) {
+                Log::info('QR image uploaded successfully', ['media_id' => $mediaId]);
+            } else {
+                Log::warning('QR image upload returned null');
+            }
+
+            return $mediaId;
 
         } catch (\Throwable $e) {
             Log::error('QR image upload failed', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return null;
         }
