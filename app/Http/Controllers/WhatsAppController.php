@@ -29,15 +29,30 @@ class WhatsAppController extends Controller
     public function sendReceipt(array $receiptIds, string $type, ?int $familyId, ?int $establishmentId): array
     {
         try {
+            Log::info('WhatsApp sendReceipt called', [
+                'receipt_ids' => $receiptIds,
+                'type' => $type,
+                'family_id' => $familyId,
+                'establishment_id' => $establishmentId,
+            ]);
+
             if (empty($receiptIds)) {
+                Log::warning('WhatsApp sendReceipt: No receipt IDs provided');
                 return ['success' => false, 'message' => 'No receipts to send'];
             }
 
             // Get receipts
             $receipts = ReceiptModel::whereIn('id', $receiptIds)->get();
             if ($receipts->isEmpty()) {
+                Log::warning('WhatsApp sendReceipt: Receipts not found in database', [
+                    'receipt_ids' => $receiptIds,
+                ]);
                 return ['success' => false, 'message' => 'Receipts not found'];
             }
+
+            Log::info('WhatsApp sendReceipt: Found receipts', [
+                'count' => $receipts->count(),
+            ]);
 
             // Determine if multiple receipts (should be clubbed)
             $isMultipleReceipts = count($receiptIds) > 1;
@@ -62,9 +77,19 @@ class WhatsAppController extends Controller
 
             // Get recipients
             $recipients = $this->getRecipients($type, $familyId, $establishmentId);
+            Log::info('WhatsApp sendReceipt: Recipients found', [
+                'count' => count($recipients),
+                'recipients' => $recipients,
+            ]);
+            
             if (empty($recipients)) {
                 // Cleanup PDFs if no recipients
                 $this->cleanupPdfFiles($pdfPaths);
+                Log::warning('WhatsApp sendReceipt: No recipients found', [
+                    'type' => $type,
+                    'family_id' => $familyId,
+                    'establishment_id' => $establishmentId,
+                ]);
                 return ['success' => false, 'message' => 'No recipients found'];
             }
 
@@ -204,7 +229,17 @@ class WhatsAppController extends Controller
             $apiVersion = config('whatsapp.api_version');
             $baseUrl = config('whatsapp.api_base_url');
 
+            Log::info('WhatsApp sendTemplateMessage called', [
+                'to' => $to,
+                'template_name' => $templateName,
+                'has_pdf' => !empty($pdfPath),
+            ]);
+
             if (!$phoneNumberId || !$accessToken) {
+                Log::error('WhatsApp configuration missing', [
+                    'phone_number_id_set' => !empty($phoneNumberId),
+                    'access_token_set' => !empty($accessToken),
+                ]);
                 return [
                     'success' => false,
                     'error' => 'WhatsApp configuration missing',

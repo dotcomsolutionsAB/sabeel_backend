@@ -160,21 +160,33 @@ class ReceiptController extends Controller
             // Trigger WhatsApp notification (non-blocking)
             try {
                 // Extract receipt IDs from created receipts array
-                // Structure: [['receipt' => ['id' => ...], 'name' => ..., 'amount' => ...], ...]
+                // Structure: [['id' => ..., 'receipt_no' => ..., ...], ...] (mapped receipt arrays)
                 $receiptIds = [];
                 foreach ($createdReceipts as $receiptData) {
-                    if (isset($receiptData['receipt']['id'])) {
-                        $receiptIds[] = (int) $receiptData['receipt']['id'];
+                    if (isset($receiptData['id'])) {
+                        $receiptIds[] = (int) $receiptData['id'];
                     }
                 }
                 
                 if (!empty($receiptIds)) {
+                    Log::info('Triggering WhatsApp notification', [
+                        'receipt_ids' => $receiptIds,
+                        'type' => $type,
+                        'family_id' => $familyId,
+                        'establishment_id' => $establishmentId,
+                    ]);
+                    
                     app(WhatsAppController::class)->sendReceipt(
                         $receiptIds,
                         $type,
                         $familyId,
                         $establishmentId
                     );
+                } else {
+                    Log::warning('No receipt IDs found for WhatsApp notification', [
+                        'created_receipts_count' => count($createdReceipts),
+                        'created_receipts_structure' => !empty($createdReceipts) ? array_keys($createdReceipts[0]) : [],
+                    ]);
                 }
             } catch (\Throwable $e) {
                 // Log error but don't fail receipt creation
