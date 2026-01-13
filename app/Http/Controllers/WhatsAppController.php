@@ -856,6 +856,15 @@ class WhatsAppController extends Controller
             }
 
             $mode = $request->input('mode');
+            
+            // Increase execution time and memory for live mode (handling ~1000 messages)
+            if ($mode === 'live') {
+                set_time_limit(1800); // 30 minutes
+                ini_set('memory_limit', '512M');
+            } else {
+                set_time_limit(300); // 5 minutes for other modes
+            }
+            
             $currentYear = $this->getCurrentYear();
 
             // Get families and establishments with due
@@ -869,7 +878,7 @@ class WhatsAppController extends Controller
             foreach ($familiesWithDue as $family) {
                 $recipients = $this->getFamilyRecipients($family->family_id);
                 foreach ($recipients as $recipient) {
-                    $template = $family['prev_due'] > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                    $template = ($family->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
                     $variables = $this->formatDueMessageVariables(
                         $family,
                         'family',
@@ -893,7 +902,7 @@ class WhatsAppController extends Controller
             foreach ($establishmentsWithDue as $establishment) {
                 $recipients = $this->getEstablishmentRecipients($establishment->establishment_id);
                 foreach ($recipients as $recipient) {
-                    $template = $establishment['prev_due'] > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                    $template = ($establishment->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
                     $variables = $this->formatDueMessageVariables(
                         $establishment,
                         'establishment',
@@ -1241,49 +1250,88 @@ class WhatsAppController extends Controller
             $templateGroups[$template][] = $msg;
         }
 
+        // Process in batches for live mode to prevent timeout and rate limiting
+        $batchSize = $mode === 'live' ? 50 : count($messages); // Process 50 at a time in live mode
+        $batchDelay = 2; // 2 seconds delay between batches
+
         // Send messages and log campaigns
         foreach ($templateGroups as $templateName => $templateMessages) {
             $recipientDetails = [];
             $successCount = 0;
             $failureCount = 0;
+            $totalMessages = count($templateMessages);
+            $processed = 0;
 
-            foreach ($templateMessages as $msg) {
-                $result = $this->sendTemplateMessage(
-                    $msg['recipient']['phone'],
-                    $templateName,
-                    $msg['variables']
-                );
+            // Process in batches
+            $batches = array_chunk($templateMessages, $batchSize);
+            
+            foreach ($batches as $batchIndex => $batch) {
+                foreach ($batch as $msg) {
+                    try {
+                        $result = $this->sendTemplateMessage(
+                            $msg['recipient']['phone'],
+                            $templateName,
+                            $msg['variables']
+                        );
 
-                $status = $result['success'] ? 'sent' : 'failed';
-                if ($result['success']) {
-                    $successCount++;
-                } else {
-                    $failureCount++;
+                        $status = $result['success'] ? 'sent' : 'failed';
+                        if ($result['success']) {
+                            $successCount++;
+                        } else {
+                            $failureCount++;
+                        }
+
+                        $recipientDetails[] = [
+                            'phone' => $msg['recipient']['phone'],
+                            'name' => $msg['recipient']['name'],
+                            'status' => $status,
+                            'error_message' => $result['error'] ?? null,
+                            'sent_at' => $result['success'] ? now()->toDateTimeString() : null,
+                        ];
+
+                        $results['details'][] = [
+                            'type' => $msg['type'],
+                            'template' => $templateName,
+                            'recipient' => $msg['recipient']['name'],
+                            'phone' => $msg['recipient']['phone'],
+                            'status' => $status,
+                            'error' => $result['error'] ?? null,
+                        ];
+
+                        $processed++;
+
+                        // Small delay between individual messages to avoid rate limiting
+                        if ($mode === 'live' && $processed % 10 === 0) {
+                            usleep(500000); // 0.5 second delay every 10 messages
+                        }
+
+                    } catch (\Throwable $e) {
+                        Log::error('Error sending due follow-up message', [
+                            'message' => $msg,
+                            'error' => $e->getMessage(),
+                        ]);
+                        $failureCount++;
+                        $recipientDetails[] = [
+                            'phone' => $msg['recipient']['phone'],
+                            'name' => $msg['recipient']['name'],
+                            'status' => 'failed',
+                            'error_message' => $e->getMessage(),
+                            'sent_at' => null,
+                        ];
+                    }
                 }
 
-                $recipientDetails[] = [
-                    'phone' => $msg['recipient']['phone'],
-                    'name' => $msg['recipient']['name'],
-                    'status' => $status,
-                    'error_message' => $result['error'] ?? null,
-                    'sent_at' => $result['success'] ? now()->toDateTimeString() : null,
-                ];
-
-                $results['details'][] = [
-                    'type' => $msg['type'],
-                    'template' => $templateName,
-                    'recipient' => $msg['recipient']['name'],
-                    'phone' => $msg['recipient']['phone'],
-                    'status' => $status,
-                    'error' => $result['error'] ?? null,
-                ];
+                // Delay between batches (except for the last batch)
+                if ($mode === 'live' && $batchIndex < count($batches) - 1) {
+                    sleep($batchDelay);
+                }
             }
 
             // Log campaign
             WhatsAppCampaignLogModel::create([
                 'campaign_name' => 'due_followup',
                 'template_name' => $templateName,
-                'recipient_count' => count($templateMessages),
+                'recipient_count' => $totalMessages,
                 'success_count' => $successCount,
                 'failure_count' => $failureCount,
                 'recipient_details' => $recipientDetails,
