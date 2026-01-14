@@ -147,10 +147,10 @@ class MumineenController extends Controller
             if ($search !== '') {
                 $this->applySmartSearch($q, $search, ['name', 'its', 'sector'], function ($query, $keyword) {
                     $query->orWhereIn('family_id', function($sub) use ($keyword) {
-                        $sub->from('t_mumineen')
-                            ->select('family_id')
+                          $sub->from('t_mumineen')
+                              ->select('family_id')
                             ->where('its', 'like', "%{$keyword}%");
-                    });
+                      });
                 });
             }
 

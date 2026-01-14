@@ -49,7 +49,7 @@ class DashboardController extends Controller
             $totalHouses = MumineenModel::where('status', 'active')
                 ->selectRaw('COUNT(DISTINCT family_id) as count')
                 ->value('count') ?? 0;
-            
+
             $externalHouses = MumineenModel::where('status', 'active')
                 ->where('external', true)
                 ->selectRaw('COUNT(DISTINCT family_id) as count')
@@ -362,6 +362,10 @@ class DashboardController extends Controller
     public function exportEstablishment(Request $request)
     {
         try {
+            // Increase timeout and memory for large exports
+            set_time_limit(600); // 10 minutes
+            ini_set('memory_limit', '512M');
+            
             $filter = trim((string) $request->input('filter', ''));
             $year = $request->input('year'); // Optional year parameter
 
@@ -390,17 +394,17 @@ class DashboardController extends Controller
                 if ($filter === 'due_family') {
                     if ($useSpecificYear) {
                         $q->whereIn('family_id', function ($sub) use ($targetYear) {
-                            $sub->from('t_mumineen_sabeel as s')
+                        $sub->from('t_mumineen_sabeel as s')
                                 ->leftJoin('t_receipts as r', function ($j) use ($targetYear) {
-                                    $j->on('s.family_id', '=', 'r.family_id')
+                                $j->on('s.family_id', '=', 'r.family_id')
                                     ->where('r.status', 'active')
                                     ->where('r.year', $targetYear);
-                                })
+                            })
                                 ->where('s.year', $targetYear)
-                                ->select('s.family_id')
-                                ->groupBy('s.family_id')
-                                ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
-                        });
+                            ->select('s.family_id')
+                            ->groupBy('s.family_id')
+                            ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
+                    });
                     } else {
                         // For all years, check if any year has due
                         $q->whereIn('family_id', function ($sub) {
@@ -446,10 +450,10 @@ class DashboardController extends Controller
                         ->select('family_id', DB::raw('SUM(amount) as paid'))
                         ->pluck('paid', 'family_id');
 
-                    foreach ($rows as $m) {
-                        $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
-                        $paid   = (float) ($paidMap[$m->family_id] ?? 0);
-                        $due    = max(0, $sabeel - $paid);
+                foreach ($rows as $m) {
+                    $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
+                    $paid   = (float) ($paidMap[$m->family_id] ?? 0);
+                    $due    = max(0, $sabeel - $paid);
 
                         // If filter is due_family, only export rows with due > 0
                         if ($filter === 'due_family' && $due <= 0) {
@@ -509,22 +513,22 @@ class DashboardController extends Controller
                                 continue;
                             }
 
-                            $totalSabeel += $sabeel;
-                            $totalPaid   += $paid;
-                            $totalDue    += $due;
+                    $totalSabeel += $sabeel;
+                    $totalPaid   += $paid;
+                    $totalDue    += $due;
 
-                            $excelRows[] = [
-                                $sn++,
-                                $m->its,
-                                $m->name,
-                                $m->mobile ?? '-',
-                                $m->email ?? '-',
-                                $m->sector ?? '-',
+                    $excelRows[] = [
+                        $sn++,
+                        $m->its,
+                        $m->name,
+                        $m->mobile ?? '-',
+                        $m->email ?? '-',
+                        $m->sector ?? '-',
                                 $yr,
-                                $sabeel,
-                                $paid,
-                                $due,
-                            ];
+                        $sabeel,
+                        $paid,
+                        $due,
+                    ];
                         }
                     }
                 }
@@ -567,35 +571,82 @@ class DashboardController extends Controller
             // due_establishment -> only those having due (paid < sabeel)
             if ($filter === 'due_establishment') {
                 if ($useSpecificYear) {
+                    // Optimized query for specific year
                     $q->whereIn('establishment_id', function ($sub) use ($targetYear) {
-                        $sub->from('t_establishment_sabeel as s')
+                        $sub->select('s.establishment_id')
+                            ->from('t_establishment_sabeel as s')
                             ->leftJoin('t_receipts as r', function ($j) use ($targetYear) {
                                 $j->on('s.establishment_id', '=', 'r.establishment_id')
-                                ->where('r.status', 'active')
-                                ->where('r.year', $targetYear);
+                                    ->where('r.status', 'active')
+                                    ->where('r.year', $targetYear);
                             })
                             ->where('s.year', $targetYear)
-                            ->select('s.establishment_id')
                             ->groupBy('s.establishment_id')
-                            ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
+                            ->havingRaw('COALESCE(SUM(r.amount), 0) < MAX(s.sabeel)');
                     });
+                    $rows = $q->get();
                 } else {
-                    // For all years, check if any year has due
-                    $q->whereIn('establishment_id', function ($sub) {
-                        $sub->from('t_establishment_sabeel as s')
-                            ->leftJoin('t_receipts as r', function ($j) {
-                                $j->on('s.establishment_id', '=', 'r.establishment_id')
-                                ->on('s.year', '=', 'r.year')
-                                ->where('r.status', 'active');
-                            })
-                            ->select('s.establishment_id')
-                            ->groupBy('s.establishment_id', 's.year')
-                            ->havingRaw('COALESCE(SUM(r.amount),0) < MAX(s.sabeel)');
-                    });
+                    // For all years - optimized approach: get all establishments first, then filter
+                    // This is faster than the complex subquery with groupBy on both columns
+                    $allEstIds = DB::table('t_establishment')
+                        ->pluck('establishment_id')
+                        ->all();
+                    
+                    if (empty($allEstIds)) {
+                        $rows = collect();
+                    } else {
+                        // Get sabeel data grouped by establishment_id and year
+                        $sabeelData = DB::table('t_establishment_sabeel')
+                            ->whereIn('establishment_id', $allEstIds)
+                            ->select('establishment_id', 'year', 'sabeel')
+                            ->get()
+                            ->groupBy('establishment_id');
+                        
+                        // Get paid data grouped by establishment_id and year
+                        $paidData = DB::table('t_receipts')
+                            ->whereIn('establishment_id', $allEstIds)
+                            ->where('status', 'active')
+                            ->select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
+                            ->groupBy('establishment_id', 'year')
+                            ->get()
+                            ->groupBy('establishment_id');
+                        
+                        // Find establishments with any year having due
+                        $estIdsWithDue = [];
+                        foreach ($allEstIds as $estId) {
+                            $estSabeels = $sabeelData->get($estId, collect());
+                            $estPaids = $paidData->get($estId, collect());
+                            
+                            // Get all unique years for this establishment
+                            $years = $estSabeels->pluck('year')->merge($estPaids->pluck('year'))->unique();
+                            
+                            foreach ($years as $yr) {
+                                $sabeelEntry = $estSabeels->firstWhere('year', $yr);
+                                $paidEntry = $estPaids->firstWhere('year', $yr);
+                                
+                                $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
+                                $paid = (float) ($paidEntry->paid ?? 0);
+                                $due = max(0, $sabeel - $paid);
+                                
+                                if ($due > 0) {
+                                    $estIdsWithDue[] = $estId;
+                                    break; // Found due for this establishment, no need to check other years
+                                }
+                            }
+                        }
+                        
+                        if (empty($estIdsWithDue)) {
+                            $rows = collect();
+                        } else {
+                            $q->whereIn('establishment_id', $estIdsWithDue);
+                            $rows = $q->get();
+                        }
+                    }
                 }
+            } else {
+                // For 'establishment' filter (no due filter), execute query normally
+                $rows = $q->get();
             }
-
-            $rows = $q->get();
 
             if ($rows->isEmpty()) {
                 return $this->error('No data found for export.', 404);
@@ -638,24 +689,24 @@ class DashboardController extends Controller
                     ->select('establishment_id', DB::raw('SUM(amount) as paid'))
                     ->pluck('paid', 'establishment_id');
 
-                foreach ($rows as $e) {
-                    $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
-                    $paid   = (float) ($paidMap[$e->establishment_id] ?? 0);
-                    $due    = max(0, $sabeel - $paid);
+            foreach ($rows as $e) {
+                $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
+                $paid   = (float) ($paidMap[$e->establishment_id] ?? 0);
+                $due    = max(0, $sabeel - $paid);
 
-                    $totalSabeel += $sabeel;
-                    $totalPaid   += $paid;
-                    $totalDue    += $due;
+                $totalSabeel += $sabeel;
+                $totalPaid   += $paid;
+                $totalDue    += $due;
 
-                    $excelRows[] = [
-                        $sn++,
-                        $e->name,
-                        '-',
-                        '-',
-                        $e->address ?? '-',
-                        isset($partnersByEst[$e->establishment_id])
-                            ? implode(', ', $partnersByEst[$e->establishment_id])
-                            : '-',
+                $excelRows[] = [
+                    $sn++,
+                    $e->name,
+                    '-',
+                    '-',
+                    $e->address ?? '-',
+                    isset($partnersByEst[$e->establishment_id])
+                        ? implode(', ', $partnersByEst[$e->establishment_id])
+                        : '-',
                         $targetYear,
                         $sabeel,
                         $paid,
@@ -706,10 +757,10 @@ class DashboardController extends Controller
                                 ? implode(', ', $partnersByEst[$e->establishment_id])
                                 : '-',
                             $yr,
-                            $sabeel,
-                            $paid,
-                            $due,
-                        ];
+                    $sabeel,
+                    $paid,
+                    $due,
+                ];
                     }
                 }
             }

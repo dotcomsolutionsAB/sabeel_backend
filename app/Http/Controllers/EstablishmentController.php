@@ -98,15 +98,15 @@ class EstablishmentController extends Controller
             if ($search !== '') {
                 $this->applySmartSearch($q, $search, ['name', 'address', 'establishment_id'], function ($query, $keyword) {
                     $query->orWhereExists(function($sub) use ($keyword) {
-                        $sub->from('t_mumineen_establishment as me')
-                            ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                            ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
+                          $sub->from('t_mumineen_establishment as me')
+                              ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
+                              ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
                             ->where(function($x) use ($keyword) {
                                 $x->where('m.its', 'like', "%{$keyword}%")
                                   ->orWhere('m.name', 'like', "%{$keyword}%")
                                   ->orWhere('m.sector', 'like', "%{$keyword}%");
-                            });
-                    });
+                              });
+                      });
                 });
             }
 
@@ -198,7 +198,7 @@ class EstablishmentController extends Controller
                 EstablishmentSabeelModel::where('establishment_id', $est->establishment_id)->delete();
 
                 // Delete establishment record
-                $est->delete();
+            $est->delete();
 
                 DB::commit();
 

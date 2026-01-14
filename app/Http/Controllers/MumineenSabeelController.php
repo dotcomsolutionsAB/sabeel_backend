@@ -429,7 +429,7 @@ class MumineenSabeelController extends Controller
         [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
         [$curSabeel, $curDue] = $this->familyDueForYear($family_id, $currentYear);
-        
+
         // Calculate prev_due as sum of dues for all years before current year
         $prevDue = $this->familyTotalDueForAllPreviousYears($family_id, (string)$currentYear);
 

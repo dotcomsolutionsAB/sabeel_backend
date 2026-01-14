@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt - {{ $receiptNumber }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
     <style>
         * { 
@@ -280,83 +280,83 @@
         </tr>
     </table>
 
-        <!-- Header -->
-        <table class="header">
-            <tr>
-                <td class="logo-cell">
-                    <img class="logo"
-                         src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png"
-                         alt="Logo"
-                         onerror="this.style.display='none'"/>
-                </td>
-                <td class="text-cell">
-                    <div class="org-title">DAWOODI BOHRA JAMAAT TRUST (KOLKATA)</div>
-                    <div class="org-address">16/F, Dr, Syedna Mohammed Burhanuddin Road</div>
-                    <div class="anjuman">ANJUMAN - E - MOHAMMEDI</div>
-                </td>
-            </tr>
-        </table>
+    <!-- Header -->
+    <table class="header">
+        <tr>
+            <td class="logo-cell">
+                <img class="logo"
+                     src="https://api.kolkatajamaat.com/storage/uploads/logo-DV4Ydy01.png"
+                     alt="Logo"
+                     onerror="this.style.display='none'"/>
+            </td>
+            <td class="text-cell">
+                <div class="org-title">DAWOODI BOHRA JAMAAT TRUST (KOLKATA)</div>
+                <div class="org-address">16/F, Dr, Syedna Mohammed Burhanuddin Road</div>
+                <div class="anjuman">ANJUMAN - E - MOHAMMEDI</div>
+            </td>
+        </tr>
+    </table>
 
         <!-- Main Content Section -->
         <div class="content-section">
-            <!-- Received From -->
-            <table class="single emph">
-                <tr>
-                    <td class="label-col">Received From :</td>
-                    <td class="value-col">{{ $receivedFrom }}</td>
-                </tr>
-            </table>
+    <!-- Received From -->
+    <table class="single emph">
+        <tr>
+            <td class="label-col">Received From :</td>
+            <td class="value-col">{{ $receivedFrom }}</td>
+        </tr>
+    </table>
 
-            <!-- Amount -->
-            <table class="single emph">
-                <tr>
-                    <td class="label-col">Amount :</td>
-                    <td class="value-col">{{ $amount }} ( {{ $amountInWords }} )</td>
-                </tr>
-            </table>
+    <!-- Amount -->
+    <table class="single emph">
+        <tr>
+            <td class="label-col">Amount :</td>
+            <td class="value-col">{{ $amount }} ( {{ $amountInWords }} )</td>
+        </tr>
+    </table>
 
-            <!-- Payment Mode + Cheque/Txn -->
-            <table class="split6">
-                <tr>
-                    <td class="k1">Payment Mode :</td>
-                    <td class="s1"></td>
-                    <td class="v1">{{ $paymentMode }}</td>
+    <!-- Payment Mode + Cheque/Txn -->
+    <table class="split6">
+        <tr>
+            <td class="k1">Payment Mode :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $paymentMode }}</td>
 
-                    <td class="k2">Cheque No / Transaction Id :</td>
-                    <td class="s2"></td>
-                    <td class="v2">{{ $chequeNo }}</td>
-                </tr>
-            </table>
+            <td class="k2">Cheque No / Transaction Id :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $chequeNo }}</td>
+        </tr>
+    </table>
 
-            <!-- Year + Bank -->
-            <table class="split6">
-                <tr>
-                    <td class="k1">For the Year :</td>
-                    <td class="s1"></td>
-                    <td class="v1">{{ $year }}</td>
+    <!-- Year + Bank -->
+    <table class="split6">
+        <tr>
+            <td class="k1">For the Year :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $year }}</td>
 
-                    <td class="k2">Bank Name :</td>
-                    <td class="s2"></td>
-                    <td class="v2">{{ $bankName }}</td>
-                </tr>
-            </table>
+            <td class="k2">Bank Name :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $bankName }}</td>
+        </tr>
+    </table>
 
-            <!-- Received By + Dated -->
-            <table class="split6">
-                <tr>
-                    <td class="k1">Received By :</td>
-                    <td class="s1"></td>
-                    <td class="v1">{{ $receivedBy }}</td>
+    <!-- Received By + Dated -->
+    <table class="split6">
+        <tr>
+            <td class="k1">Received By :</td>
+            <td class="s1"></td>
+            <td class="v1">{{ $receivedBy }}</td>
 
-                    <td class="k2">Dated :</td>
-                    <td class="s2"></td>
-                    <td class="v2">{{ $chequeDate }}</td>
-                </tr>
-            </table>
+            <td class="k2">Dated :</td>
+            <td class="s2"></td>
+            <td class="v2">{{ $chequeDate }}</td>
+        </tr>
+    </table>
         </div>
 
     </div>
-    
+
     <!-- Footer -->
     <div class="footer">
         This is a computer generated receipt and does not require any signature.
