@@ -1720,14 +1720,25 @@ class WhatsAppController extends Controller
             $batchSize = 25;
             $templateName = 'sabeel_error';
 
-            // Get families with due
+            // Get families with due and error_flag = 1
             $familiesWithDue = $this->getFamiliesWithDue($currentYear);
 
             // Build pending messages list (excluding those already sent today)
             $pendingMessages = [];
 
-            // Process families
+            // Process families - only those with error_flag = 1
             foreach ($familiesWithDue as $family) {
+                // Check if family has error_flag = 1
+                $hof = MumineenModel::where('family_id', $family->family_id)
+                    ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
+                    ->where('error_flag', true)
+                    ->first();
+
+                if (!$hof) {
+                    continue; // Skip families without error_flag = 1
+                }
+
                 $recipients = $this->getFamilyRecipients($family->family_id);
                 foreach ($recipients as $recipient) {
                     // Check if already sent today (using sabeel_error template)
@@ -1937,12 +1948,23 @@ class WhatsAppController extends Controller
                 }
             }
 
-            // Count pending messages for sabeel_error
+            // Count pending messages for sabeel_error (only families with error_flag = 1)
             $sabeelErrorPending = [];
             $sabeelErrorCount = 0;
 
-            // Process families for sabeel_error
+            // Process families for sabeel_error - only those with error_flag = 1
             foreach ($familiesWithDue as $family) {
+                // Check if family has error_flag = 1
+                $hof = MumineenModel::where('family_id', $family->family_id)
+                    ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
+                    ->where('error_flag', true)
+                    ->first();
+
+                if (!$hof) {
+                    continue; // Skip families without error_flag = 1
+                }
+
                 $recipients = $this->getFamilyRecipients($family->family_id);
                 foreach ($recipients as $recipient) {
                     $alreadySent = WhatsAppDueFollowupModel::where('type', 'family')

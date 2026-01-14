@@ -27,6 +27,7 @@ class MumineenModel extends Model
         'status',
         'external',
         'notification',
+        'error_flag',
     ];
 
     protected $casts = [
@@ -34,6 +35,7 @@ class MumineenModel extends Model
         'age'       => 'integer',
         'external'  => 'boolean',
         'notification' => 'boolean',
+        'error_flag' => 'boolean',
     ];
 
     // One family can have many links to establishments
