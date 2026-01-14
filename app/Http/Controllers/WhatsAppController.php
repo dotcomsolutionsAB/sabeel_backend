@@ -1119,6 +1119,7 @@ class WhatsAppController extends Controller
     {
         $activeHofs = MumineenModel::where('hof_type', 'HOF')
             ->where('status', 'active')
+            ->where('notification', true)
             ->get();
 
         $familiesWithDue = collect();
@@ -1143,7 +1144,9 @@ class WhatsAppController extends Controller
      */
     private function getEstablishmentsWithDue(string $currentYear)
     {
-        $establishments = EstablishmentModel::where('status', 'active')->get();
+        $establishments = EstablishmentModel::where('status', 'active')
+            ->where('notification', true)
+            ->get();
         $establishmentsWithDue = collect();
 
         foreach ($establishments as $est) {
@@ -1277,6 +1280,7 @@ class WhatsAppController extends Controller
         $hof = MumineenModel::where('family_id', $familyId)
             ->where('hof_type', 'HOF')
             ->where('status', 'active')
+            ->where('notification', true)
             ->first();
 
         if (!$hof || !$hof->mobile) {
@@ -1301,6 +1305,7 @@ class WhatsAppController extends Controller
             $hof = MumineenModel::where('family_id', $link->family_id)
                 ->where('hof_type', 'HOF')
                 ->where('status', 'active')
+                ->where('notification', true)
                 ->first();
 
             if ($hof && $hof->mobile) {

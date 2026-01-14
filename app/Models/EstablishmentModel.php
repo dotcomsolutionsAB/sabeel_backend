@@ -17,12 +17,14 @@ class EstablishmentModel extends Model
         'status',
         'type',
         'remarks',
+        'notification',
     ];
 
     protected $casts = [
         // enums are stored as strings in DB; cast not needed, but ok as string.
         'status' => 'string',
         'type'   => 'string',
+        'notification' => 'boolean',
     ];
 
     public function sabeelEntries(): HasMany
