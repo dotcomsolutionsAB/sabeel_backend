@@ -163,4 +163,3 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 Route::prefix('whatsapp')->group(function () {
     Route::post('/due-followup-batch', [WhatsAppController::class, 'sendDueFollowupBatch']);
 });
-});
