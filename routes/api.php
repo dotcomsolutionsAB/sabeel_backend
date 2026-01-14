@@ -164,4 +164,5 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 Route::prefix('whatsapp')->group(function () {
     Route::match(['get', 'post'], '/due-followup-batch', [WhatsAppController::class, 'sendDueFollowupBatch']);
     Route::match(['get', 'post'], '/sabeel-error-batch', [WhatsAppController::class, 'sendSabeelErrorBatch']);
+    Route::match(['get', 'post'], '/simulate', [WhatsAppController::class, 'simulateDueFollowup']);
 });

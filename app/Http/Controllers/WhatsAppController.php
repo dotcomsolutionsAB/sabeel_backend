@@ -1848,4 +1848,176 @@ class WhatsAppController extends Controller
             return $this->serverError($e, 'Batch processing failed');
         }
     }
+
+    /**
+     * Simulation endpoint to check how many messages would be sent
+     * Shows pending messages count without actually sending them
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function simulateDueFollowup(Request $request)
+    {
+        try {
+            // Check if due follow-up is enabled
+            if (!config('whatsapp.due_followup_enabled', false)) {
+                return $this->error('Due follow-up feature is disabled', 403);
+            }
+
+            // Optional: Add authentication token for security
+            $cronToken = $request->input('token');
+            $expectedToken = config('whatsapp.cron_token', env('WHATSAPP_CRON_TOKEN', ''));
+            if (!empty($expectedToken) && $cronToken !== $expectedToken) {
+                return $this->error('Invalid token', 401);
+            }
+
+            $currentYear = $this->getCurrentYear();
+            $today = now()->toDateString();
+
+            // Get families and establishments with due
+            $familiesWithDue = $this->getFamiliesWithDue($currentYear);
+            $establishmentsWithDue = $this->getEstablishmentsWithDue($currentYear);
+
+            // Count pending messages for due follow-up
+            $dueFollowupPending = [];
+            $dueFollowupFamilyCount = 0;
+            $dueFollowupEstablishmentCount = 0;
+
+            // Process families for due follow-up
+            foreach ($familiesWithDue as $family) {
+                $recipients = $this->getFamilyRecipients($family->family_id);
+                foreach ($recipients as $recipient) {
+                    $alreadySent = WhatsAppDueFollowupModel::where('type', 'family')
+                        ->where('family_id', $family->family_id)
+                        ->where('phone', $recipient['phone'])
+                        ->where('sent_date', $today)
+                        ->whereIn('template_name', ['sabeel_due', 'sabeel_overdue'])
+                        ->exists();
+
+                    if (!$alreadySent) {
+                        $dueFollowupFamilyCount++;
+                        $template = ($family->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                        $dueFollowupPending[] = [
+                            'type' => 'family',
+                            'family_id' => $family->family_id,
+                            'name' => $family->name ?? 'N/A',
+                            'phone' => $recipient['phone'],
+                            'template' => $template,
+                            'due' => $family->due ?? 0,
+                            'prev_due' => $family->prev_due ?? 0,
+                        ];
+                    }
+                }
+            }
+
+            // Process establishments for due follow-up
+            foreach ($establishmentsWithDue as $establishment) {
+                $recipients = $this->getEstablishmentRecipients($establishment->establishment_id);
+                foreach ($recipients as $recipient) {
+                    $alreadySent = WhatsAppDueFollowupModel::where('type', 'establishment')
+                        ->where('establishment_id', $establishment->establishment_id)
+                        ->where('phone', $recipient['phone'])
+                        ->where('sent_date', $today)
+                        ->whereIn('template_name', ['sabeel_due', 'sabeel_overdue'])
+                        ->exists();
+
+                    if (!$alreadySent) {
+                        $dueFollowupEstablishmentCount++;
+                        $template = ($establishment->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                        $dueFollowupPending[] = [
+                            'type' => 'establishment',
+                            'establishment_id' => $establishment->establishment_id,
+                            'name' => $establishment->name ?? 'N/A',
+                            'phone' => $recipient['phone'],
+                            'template' => $template,
+                            'due' => $establishment->due ?? 0,
+                            'prev_due' => $establishment->prev_due ?? 0,
+                        ];
+                    }
+                }
+            }
+
+            // Count pending messages for sabeel_error
+            $sabeelErrorPending = [];
+            $sabeelErrorCount = 0;
+
+            // Process families for sabeel_error
+            foreach ($familiesWithDue as $family) {
+                $recipients = $this->getFamilyRecipients($family->family_id);
+                foreach ($recipients as $recipient) {
+                    $alreadySent = WhatsAppDueFollowupModel::where('type', 'family')
+                        ->where('family_id', $family->family_id)
+                        ->where('phone', $recipient['phone'])
+                        ->where('template_name', 'sabeel_error')
+                        ->where('sent_date', $today)
+                        ->exists();
+
+                    if (!$alreadySent) {
+                        $sabeelErrorCount++;
+                        $sabeelErrorPending[] = [
+                            'type' => 'family',
+                            'family_id' => $family->family_id,
+                            'name' => $family->name ?? 'N/A',
+                            'phone' => $recipient['phone'],
+                            'template' => 'sabeel_error',
+                            'due' => $family->due ?? 0,
+                        ];
+                    }
+                }
+            }
+
+            // Count messages sent today
+            $sentTodayDueFollowup = WhatsAppDueFollowupModel::where('sent_date', $today)
+                ->whereIn('template_name', ['sabeel_due', 'sabeel_overdue'])
+                ->where('status', 'sent')
+                ->count();
+
+            $sentTodaySabeelError = WhatsAppDueFollowupModel::where('sent_date', $today)
+                ->where('template_name', 'sabeel_error')
+                ->where('status', 'sent')
+                ->count();
+
+            // Group by template
+            $dueFollowupByTemplate = [
+                'sabeel_due' => 0,
+                'sabeel_overdue' => 0,
+            ];
+            foreach ($dueFollowupPending as $msg) {
+                $dueFollowupByTemplate[$msg['template']] = ($dueFollowupByTemplate[$msg['template']] ?? 0) + 1;
+            }
+
+            return $this->success('Simulation completed', [
+                'current_year' => $currentYear,
+                'date' => $today,
+                'summary' => [
+                    'total_families_with_due' => $familiesWithDue->count(),
+                    'total_establishments_with_due' => $establishmentsWithDue->count(),
+                ],
+                'due_followup' => [
+                    'pending_total' => count($dueFollowupPending),
+                    'pending_families' => $dueFollowupFamilyCount,
+                    'pending_establishments' => $dueFollowupEstablishmentCount,
+                    'sent_today' => $sentTodayDueFollowup,
+                    'by_template' => $dueFollowupByTemplate,
+                    'batches_needed' => ceil(count($dueFollowupPending) / 25),
+                ],
+                'sabeel_error' => [
+                    'pending_total' => $sabeelErrorCount,
+                    'sent_today' => $sentTodaySabeelError,
+                    'batches_needed' => ceil($sabeelErrorCount / 25),
+                ],
+                'pending_messages' => [
+                    'due_followup' => array_slice($dueFollowupPending, 0, 50), // Show first 50
+                    'sabeel_error' => array_slice($sabeelErrorPending, 0, 50), // Show first 50
+                ],
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Error in simulateDueFollowup', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->serverError($e, 'Simulation failed');
+        }
+    }
 }
