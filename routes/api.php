@@ -158,3 +158,9 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/due-followup', [WhatsAppController::class, 'sendDueFollowup']);
     });
 });
+
+// Public cron endpoint (no auth required, but token protected)
+Route::prefix('whatsapp')->group(function () {
+    Route::post('/due-followup-batch', [WhatsAppController::class, 'sendDueFollowupBatch']);
+});
+});

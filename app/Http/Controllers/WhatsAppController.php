@@ -15,6 +15,7 @@ use App\Models\YearModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\AdvancePaidModel;
+use App\Models\WhatsAppDueFollowupModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
@@ -1480,5 +1481,211 @@ class WhatsAppController extends Controller
         }
 
         return $results;
+    }
+
+    /**
+     * Cron endpoint to send due follow-up messages in batches of 25
+     * This should be called by a cron job periodically (e.g., every 5-10 minutes)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sendDueFollowupBatch(Request $request)
+    {
+        try {
+            // Check if due follow-up is enabled
+            if (!config('whatsapp.due_followup_enabled', false)) {
+                return $this->error('Due follow-up feature is disabled', 403);
+            }
+
+            // Optional: Add authentication token for cron security
+            $cronToken = $request->input('token');
+            $expectedToken = config('whatsapp.cron_token', env('WHATSAPP_CRON_TOKEN', ''));
+            if (!empty($expectedToken) && $cronToken !== $expectedToken) {
+                return $this->error('Invalid cron token', 401);
+            }
+
+            set_time_limit(300); // 5 minutes max
+            ini_set('memory_limit', '256M');
+
+            $currentYear = $this->getCurrentYear();
+            $today = now()->toDateString();
+            $batchSize = 25;
+
+            // Get families and establishments with due
+            $familiesWithDue = $this->getFamiliesWithDue($currentYear);
+            $establishmentsWithDue = $this->getEstablishmentsWithDue($currentYear);
+
+            // Build pending messages list (excluding those already sent today)
+            $pendingMessages = [];
+
+            // Process families
+            foreach ($familiesWithDue as $family) {
+                $recipients = $this->getFamilyRecipients($family->family_id);
+                foreach ($recipients as $recipient) {
+                    // Check if already sent today
+                    $alreadySent = WhatsAppDueFollowupModel::where('type', 'family')
+                        ->where('family_id', $family->family_id)
+                        ->where('phone', $recipient['phone'])
+                        ->where('sent_date', $today)
+                        ->exists();
+
+                    if (!$alreadySent) {
+                        $template = ($family->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                        $variables = $this->formatDueMessageVariables(
+                            $family,
+                            'family',
+                            $family->family_id,
+                            null,
+                            $recipient,
+                            $template
+                        );
+
+                        $pendingMessages[] = [
+                            'type' => 'family',
+                            'family_id' => $family->family_id,
+                            'establishment_id' => null,
+                            'template' => $template,
+                            'recipient' => $recipient,
+                            'variables' => $variables,
+                        ];
+                    }
+                }
+            }
+
+            // Process establishments
+            foreach ($establishmentsWithDue as $establishment) {
+                $recipients = $this->getEstablishmentRecipients($establishment->establishment_id);
+                foreach ($recipients as $recipient) {
+                    // Check if already sent today
+                    $alreadySent = WhatsAppDueFollowupModel::where('type', 'establishment')
+                        ->where('establishment_id', $establishment->establishment_id)
+                        ->where('phone', $recipient['phone'])
+                        ->where('sent_date', $today)
+                        ->exists();
+
+                    if (!$alreadySent) {
+                        $template = ($establishment->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                        $variables = $this->formatDueMessageVariables(
+                            $establishment,
+                            'establishment',
+                            null,
+                            $establishment->establishment_id,
+                            $recipient,
+                            $template
+                        );
+
+                        $pendingMessages[] = [
+                            'type' => 'establishment',
+                            'family_id' => null,
+                            'establishment_id' => $establishment->establishment_id,
+                            'template' => $template,
+                            'recipient' => $recipient,
+                            'variables' => $variables,
+                        ];
+                    }
+                }
+            }
+
+            if (empty($pendingMessages)) {
+                return $this->success('No pending messages to send', [
+                    'sent' => 0,
+                    'pending' => 0,
+                    'message' => 'All due follow-up messages for today have already been sent',
+                ]);
+            }
+
+            // Take only the first batch (25 messages)
+            $batchMessages = array_slice($pendingMessages, 0, $batchSize);
+
+            // Upload QR image once for the batch
+            $qrImageMediaId = $this->uploadQrImage();
+            if (!$qrImageMediaId) {
+                Log::warning('QR image upload failed for batch, continuing without header image');
+            }
+
+            $successCount = 0;
+            $failureCount = 0;
+            $sentRecords = [];
+
+            // Send messages in batch
+            foreach ($batchMessages as $msg) {
+                try {
+                    $result = $this->sendTemplateMessage(
+                        $msg['recipient']['phone'],
+                        $msg['template'],
+                        $msg['variables'],
+                        null, // No PDF for due follow-up
+                        $qrImageMediaId // QR image media ID
+                    );
+
+                    $status = $result['success'] ? 'sent' : 'failed';
+                    
+                    // Record in database
+                    $followupRecord = WhatsAppDueFollowupModel::create([
+                        'type' => $msg['type'],
+                        'family_id' => $msg['family_id'],
+                        'establishment_id' => $msg['establishment_id'],
+                        'phone' => $msg['recipient']['phone'],
+                        'sent_date' => $today,
+                        'template_name' => $msg['template'],
+                        'status' => $status,
+                        'error_message' => $result['error'] ?? null,
+                        'message_variables' => $msg['variables'],
+                    ]);
+
+                    if ($result['success']) {
+                        $successCount++;
+                        $sentRecords[] = [
+                            'type' => $msg['type'],
+                            'phone' => $msg['recipient']['phone'],
+                            'name' => $msg['recipient']['name'],
+                        ];
+                    } else {
+                        $failureCount++;
+                    }
+
+                    // Small delay between messages to avoid rate limiting
+                    usleep(200000); // 0.2 second delay
+
+                } catch (\Throwable $e) {
+                    Log::error('Error sending due follow-up message in batch', [
+                        'message' => $msg,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    // Record failure in database
+                    WhatsAppDueFollowupModel::create([
+                        'type' => $msg['type'],
+                        'family_id' => $msg['family_id'],
+                        'establishment_id' => $msg['establishment_id'],
+                        'phone' => $msg['recipient']['phone'],
+                        'sent_date' => $today,
+                        'template_name' => $msg['template'],
+                        'status' => 'failed',
+                        'error_message' => $e->getMessage(),
+                        'message_variables' => $msg['variables'],
+                    ]);
+
+                    $failureCount++;
+                }
+            }
+
+            return $this->success('Batch processing completed', [
+                'sent' => $successCount,
+                'failed' => $failureCount,
+                'pending' => count($pendingMessages) - $batchSize,
+                'total_pending' => count($pendingMessages),
+                'batch_size' => $batchSize,
+                'sent_records' => $sentRecords,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Error in sendDueFollowupBatch', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->serverError($e, 'Batch processing failed');
+        }
     }
 }

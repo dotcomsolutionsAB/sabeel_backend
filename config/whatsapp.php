@@ -9,4 +9,5 @@ return [
     'test_phone' => env('WHATSAPP_TEST_PHONE', ''),
     'beta_test_phone' => env('WHATSAPP_BETA_TEST_PHONE', ''),
     'due_followup_enabled' => env('WHATSAPP_DUE_FOLLOWUP_ENABLED', false),
+    'cron_token' => env('WHATSAPP_CRON_TOKEN', ''),
 ];
