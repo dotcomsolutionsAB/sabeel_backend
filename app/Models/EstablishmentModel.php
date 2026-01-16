@@ -18,6 +18,8 @@ class EstablishmentModel extends Model
         'type',
         'remarks',
         'notification',
+        'is_verified',
+        'is_takhmeen_updated',
     ];
 
     protected $casts = [
@@ -25,6 +27,8 @@ class EstablishmentModel extends Model
         'status' => 'string',
         'type'   => 'string',
         'notification' => 'boolean',
+        'is_verified' => 'boolean',
+        'is_takhmeen_updated' => 'boolean',
     ];
 
     public function sabeelEntries(): HasMany

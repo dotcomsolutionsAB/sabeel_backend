@@ -573,4 +573,54 @@ class EstablishmentController extends Controller
 
         return $totalPrevDue;
     }
+
+    /**
+     * UPDATE VERIFICATION FLAGS
+     * POST /establishment/update-verification/{establishment_id}
+     * Body: { "is_verified": true, "is_takhmeen_updated": false }
+     * Both fields are optional - can update one or both
+     */
+    public function updateVerification(Request $request, $establishment_id)
+    {
+        try {
+            $establishment = EstablishmentModel::where('establishment_id', (string) $establishment_id)->first();
+
+            if (!$establishment) {
+                return $this->error('Establishment not found.', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'is_verified' => 'nullable|boolean',
+                'is_takhmeen_updated' => 'nullable|boolean',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            // Build update array - only include fields that are provided
+            $updateData = [];
+            if ($request->has('is_verified')) {
+                $updateData['is_verified'] = (bool) $request->is_verified;
+            }
+            if ($request->has('is_takhmeen_updated')) {
+                $updateData['is_takhmeen_updated'] = (bool) $request->is_takhmeen_updated;
+            }
+
+            if (empty($updateData)) {
+                return $this->error('At least one field (is_verified or is_takhmeen_updated) must be provided.', 400);
+            }
+
+            $establishment->update($updateData);
+
+            return $this->success('Verification flags updated successfully', [
+                'establishment_id' => $establishment->establishment_id,
+                'is_verified' => $establishment->is_verified,
+                'is_takhmeen_updated' => $establishment->is_takhmeen_updated,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Verification update failed');
+        }
+    }
 }

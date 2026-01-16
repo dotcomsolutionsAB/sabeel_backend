@@ -1163,4 +1163,56 @@ class MumineenController extends Controller
         $next = substr((string)($year + 1), -2);
         return "{$year}-{$next}";
     }
+
+    /**
+     * UPDATE VERIFICATION FLAGS
+     * POST /family/update-verification/{family_id}
+     * Body: { "is_verified": true, "is_takhmeen_updated": false }
+     * Both fields are optional - can update one or both
+     */
+    public function updateVerification(Request $request, $family_id)
+    {
+        try {
+            $mumineen = MumineenModel::where('family_id', (int) $family_id)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            if (!$mumineen) {
+                return $this->error('Mumineen not found.', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'is_verified' => 'nullable|boolean',
+                'is_takhmeen_updated' => 'nullable|boolean',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            // Build update array - only include fields that are provided
+            $updateData = [];
+            if ($request->has('is_verified')) {
+                $updateData['is_verified'] = (bool) $request->is_verified;
+            }
+            if ($request->has('is_takhmeen_updated')) {
+                $updateData['is_takhmeen_updated'] = (bool) $request->is_takhmeen_updated;
+            }
+
+            if (empty($updateData)) {
+                return $this->error('At least one field (is_verified or is_takhmeen_updated) must be provided.', 400);
+            }
+
+            $mumineen->update($updateData);
+
+            return $this->success('Verification flags updated successfully', [
+                'family_id' => $mumineen->family_id,
+                'is_verified' => $mumineen->is_verified,
+                'is_takhmeen_updated' => $mumineen->is_takhmeen_updated,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Verification update failed');
+        }
+    }
 }

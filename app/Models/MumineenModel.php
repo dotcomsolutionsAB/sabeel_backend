@@ -28,6 +28,8 @@ class MumineenModel extends Model
         'external',
         'notification',
         'error_flag',
+        'is_verified',
+        'is_takhmeen_updated',
     ];
 
     protected $casts = [
@@ -36,6 +38,8 @@ class MumineenModel extends Model
         'external'  => 'boolean',
         'notification' => 'boolean',
         'error_flag' => 'boolean',
+        'is_verified' => 'boolean',
+        'is_takhmeen_updated' => 'boolean',
     ];
 
     // One family can have many links to establishments
