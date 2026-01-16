@@ -104,12 +104,22 @@ class MumineenController extends Controller
 
             // SINGLE -> still return array (consistent with your sample)
             if ($id !== null) {
+                $selectFields = ['id','family_id','its','name','sector','mobile','email', 'pic'];
+                // Add verification fields if columns exist
+                if (Schema::hasColumn('t_mumineen', 'is_verified')) {
+                    $selectFields[] = 'is_verified';
+                }
+                if (Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
+                    $selectFields[] = 'is_takhmeen_updated';
+                }
+
                 $m = MumineenModel::where('hof_type','HOF')
                     ->where('status', 'active')
                     ->where(function ($q) use ($id) {
                         $q->where('id', $id)
                         ->orWhere('family_id', $id);
                     })
+                    ->select($selectFields)
                     ->first();
 
                 if (!$m) {
@@ -126,12 +136,23 @@ class MumineenController extends Controller
             $search = trim((string) $request->input('search', ''));
             $sector = trim((string) $request->input('sector', ''));
             $filter = trim((string) $request->input('filter', ''));
+            $isVerified = $request->input('is_verified');
+            $isTakhmeenUpdated = $request->input('is_takhmeen_updated');
+
+            $selectFields = ['id','family_id','its','name','sector','mobile','email', 'pic'];
+            // Add verification fields if columns exist
+            if (Schema::hasColumn('t_mumineen', 'is_verified')) {
+                $selectFields[] = 'is_verified';
+            }
+            if (Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
+                $selectFields[] = 'is_takhmeen_updated';
+            }
 
             $q = MumineenModel::query()
                 ->where('hof_type', 'HOF')
                 ->where('status', 'active')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
-                ->select('id','family_id','its','name','sector','mobile','email', 'pic')
+                ->select($selectFields)
                 ->orderByRaw("CASE 
                     WHEN sector = 'BURHANI' THEN 1 
                     WHEN sector = 'EZZY' THEN 2 
@@ -156,6 +177,16 @@ class MumineenController extends Controller
 
             if ($sector !== '') {
                 $q->where('sector', $sector);
+            }
+
+            // Filter by is_verified (only if column exists)
+            if ($isVerified !== null && Schema::hasColumn('t_mumineen', 'is_verified')) {
+                $q->where('is_verified', (bool) $isVerified);
+            }
+
+            // Filter by is_takhmeen_updated (only if column exists)
+            if ($isTakhmeenUpdated !== null && Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
+                $q->where('is_takhmeen_updated', (bool) $isTakhmeenUpdated);
             }
 
             if ($filter !== '') {
@@ -1024,6 +1055,10 @@ class MumineenController extends Controller
         $familyIds = collect($rows)->pluck('family_id')->filter()->unique()->values()->all();
         if (empty($familyIds)) return [];
 
+        // Check if verification columns exist (once for all rows)
+        $hasIsVerified = Schema::hasColumn('t_mumineen', 'is_verified');
+        $hasIsTakhmeenUpdated = Schema::hasColumn('t_mumineen', 'is_takhmeen_updated');
+
         // Family sabeel entries
         $ms = MumineenSabeelModel::whereIn('family_id', $familyIds)
             ->get()
@@ -1137,6 +1172,8 @@ class MumineenController extends Controller
                 'sector'    => (string) ($m->sector ?? ''),
                 'mobile'    => (string) ($m->mobile ?? ''),
                 'email'     => (string) ($m->email ?? ''),
+                'is_verified' => $hasIsVerified ? (bool) ($m->is_verified ?? false) : false,
+                'is_takhmeen_updated' => $hasIsTakhmeenUpdated ? (bool) ($m->is_takhmeen_updated ?? false) : false,
 
                 'sabeel' => [
                     'sabeel'   => (string) $curSabeel,

@@ -77,7 +77,17 @@ class EstablishmentController extends Controller
 
             // SINGLE
             if ($id !== null) {
-                $est = EstablishmentModel::find($id);
+                $selectFields = ['id','establishment_id','name','address','type','status'];
+                // Add verification fields if columns exist
+                if (Schema::hasColumn('t_establishment', 'is_verified')) {
+                    $selectFields[] = 'is_verified';
+                }
+                if (Schema::hasColumn('t_establishment', 'is_takhmeen_updated')) {
+                    $selectFields[] = 'is_takhmeen_updated';
+                }
+
+                $est = EstablishmentModel::select($selectFields)
+                    ->find($id);
                 if (!$est) return $this->error('Establishment not found.', 404);
 
                 $payload = $this->buildPayload(collect([$est]), $currentYear, $prevYear);
@@ -89,9 +99,20 @@ class EstablishmentController extends Controller
             $offset = max(0, (int) $request->input('offset', 0));
             $search = trim((string) $request->input('search', ''));
             $filter = trim((string) $request->input('filter', ''));
+            $isVerified = $request->input('is_verified');
+            $isTakhmeenUpdated = $request->input('is_takhmeen_updated');
+
+            $selectFields = ['id','establishment_id','name','address','type','status'];
+            // Add verification fields if columns exist
+            if (Schema::hasColumn('t_establishment', 'is_verified')) {
+                $selectFields[] = 'is_verified';
+            }
+            if (Schema::hasColumn('t_establishment', 'is_takhmeen_updated')) {
+                $selectFields[] = 'is_takhmeen_updated';
+            }
 
             $q = EstablishmentModel::query()
-                ->select('id','establishment_id','name','address','type','status')
+                ->select($selectFields)
                 ->orderBy('name','asc');
 
             // Smart search: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
@@ -108,6 +129,16 @@ class EstablishmentController extends Controller
                               });
                       });
                 });
+            }
+
+            // Filter by is_verified (only if column exists)
+            if ($isVerified !== null && Schema::hasColumn('t_establishment', 'is_verified')) {
+                $q->where('is_verified', (bool) $isVerified);
+            }
+
+            // Filter by is_takhmeen_updated (only if column exists)
+            if ($isTakhmeenUpdated !== null && Schema::hasColumn('t_establishment', 'is_takhmeen_updated')) {
+                $q->where('is_takhmeen_updated', (bool) $isTakhmeenUpdated);
             }
 
             // FILTERS
@@ -470,6 +501,10 @@ class EstablishmentController extends Controller
 
         if (empty($estIds)) return [];
 
+        // Check if verification columns exist (once for all rows)
+        $hasIsVerified = Schema::hasColumn('t_establishment', 'is_verified');
+        $hasIsTakhmeenUpdated = Schema::hasColumn('t_establishment', 'is_takhmeen_updated');
+
         // Establishment sabeel entries
         $es = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
             ->get()
@@ -532,6 +567,8 @@ class EstablishmentController extends Controller
                 'establishment_id' => (string) $e->establishment_id,
                 'name'             => (string) $e->name,
                 'address'          => (string) $e->address,
+                'is_verified'      => $hasIsVerified ? (bool) ($e->is_verified ?? false) : false,
+                'is_takhmeen_updated' => $hasIsTakhmeenUpdated ? (bool) ($e->is_takhmeen_updated ?? false) : false,
 
                 'establishment' => [
                     'sabeel'   => (string) $curSabeel,
