@@ -23,6 +23,7 @@ use App\Models\AdvancePaidModel;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Mpdf\Mpdf;
 
 class MumineenController extends Controller
@@ -1272,9 +1273,19 @@ class MumineenController extends Controller
 
             $sector = trim($sector);
 
+            Log::info('Sector Due PDF - Start', [
+                'sector' => $sector,
+                'sector_like_pattern' => '%' . $sector . '%',
+            ]);
+
             // Get current year
             [$currentYear, $prevYear] = $this->resolveYearsSimple();
             $currentYearStr = (string) $currentYear;
+
+            Log::info('Sector Due PDF - Current Year', [
+                'current_year' => $currentYear,
+                'current_year_str' => $currentYearStr,
+            ]);
 
             // Get all families in the sector (using LIKE for partial matching)
             $families = MumineenModel::where('hof_type', 'HOF')
@@ -1294,16 +1305,32 @@ class MumineenController extends Controller
                 ->orderBy('name', 'asc')
                 ->get();
 
+            Log::info('Sector Due PDF - Families Found', [
+                'total_families' => $families->count(),
+                'family_ids' => $families->pluck('family_id')->toArray(),
+            ]);
+
             if ($families->isEmpty()) {
+                Log::warning('Sector Due PDF - No families found', ['sector' => $sector]);
                 return $this->error('No families found for sector: ' . $sector, 404);
             }
 
             $familyIds = $families->pluck('family_id')->unique()->values()->all();
 
+            Log::info('Sector Due PDF - Fetching Data', [
+                'unique_family_ids_count' => count($familyIds),
+                'family_ids' => $familyIds,
+            ]);
+
             // Get all family sabeel data
             $familySabeel = MumineenSabeelModel::whereIn('family_id', $familyIds)
                 ->get()
                 ->groupBy('family_id');
+
+            Log::info('Sector Due PDF - Family Sabeel Data', [
+                'sabeel_records_count' => $familySabeel->count(),
+                'sabeel_families' => $familySabeel->keys()->toArray(),
+            ]);
 
             // Get all family receipts paid by year
             $familyPaid = ReceiptModel::select('family_id', 'year', DB::raw('SUM(amount) as paid'))
@@ -1312,6 +1339,11 @@ class MumineenController extends Controller
                 ->groupBy('family_id', 'year')
                 ->get()
                 ->groupBy('family_id');
+
+            Log::info('Sector Due PDF - Family Receipts Data', [
+                'receipt_records_count' => $familyPaid->count(),
+                'receipt_families' => $familyPaid->keys()->toArray(),
+            ]);
 
             // Get establishment links
             $links = MumineenEstablishmentModel::with('establishment')
@@ -1339,6 +1371,11 @@ class MumineenController extends Controller
             $serialNumber = 1;
             $totalFamilies = 0;
             $totalEstablishments = 0;
+            $skippedFamilies = [];
+
+            Log::info('Sector Due PDF - Processing Families', [
+                'families_to_process' => $families->count(),
+            ]);
 
             foreach ($families as $family) {
                 $familyId = $family->family_id;
@@ -1355,8 +1392,36 @@ class MumineenController extends Controller
                 $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
                 $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
 
+                Log::debug('Sector Due PDF - Family Calculation', [
+                    'family_id' => $familyId,
+                    'its' => $family->its,
+                    'name' => $family->name,
+                    'hub' => $familySabeelCur,
+                    'paid' => $familyPaidCur,
+                    'due' => $familyDueCur,
+                    'prev_due' => $familyPrevDue,
+                    'current_year' => $currentYearStr,
+                ]);
+
                 // Skip families with current year due == 0
                 if ($familyDueCur == 0) {
+                    $skippedFamilies[] = [
+                        'family_id' => $familyId,
+                        'its' => $family->its,
+                        'name' => $family->name,
+                        'reason' => 'due == 0',
+                        'hub' => $familySabeelCur,
+                        'paid' => $familyPaidCur,
+                        'due' => $familyDueCur,
+                    ];
+                    Log::debug('Sector Due PDF - Family Skipped (due == 0)', [
+                        'family_id' => $familyId,
+                        'its' => $family->its,
+                        'name' => $family->name,
+                        'hub' => $familySabeelCur,
+                        'paid' => $familyPaidCur,
+                        'due' => $familyDueCur,
+                    ]);
                     continue;
                 }
 
@@ -1408,9 +1473,34 @@ class MumineenController extends Controller
                 ];
 
                 $totalFamilies++;
+
+                Log::debug('Sector Due PDF - Family Added', [
+                    'family_id' => $familyId,
+                    'its' => $family->its,
+                    'name' => $family->name,
+                    'hub' => $familySabeelCur,
+                    'due' => $familyDueCur,
+                    'prev_due' => $familyPrevDue,
+                    'establishments_count' => count($establishments),
+                ]);
             }
 
+            Log::info('Sector Due PDF - Processing Complete', [
+                'total_families_processed' => $families->count(),
+                'families_included' => $totalFamilies,
+                'families_skipped' => count($skippedFamilies),
+                'skipped_families' => $skippedFamilies,
+                'total_establishments' => $totalEstablishments,
+                'pdf_data_count' => count($pdfData),
+            ]);
+
             if (empty($pdfData)) {
+                Log::warning('Sector Due PDF - No data to generate PDF', [
+                    'sector' => $sector,
+                    'total_families_found' => $families->count(),
+                    'families_skipped' => count($skippedFamilies),
+                    'skipped_details' => $skippedFamilies,
+                ]);
                 return $this->error('No families with due found for sector: ' . $sector, 404);
             }
 
@@ -1438,6 +1528,14 @@ class MumineenController extends Controller
             // Generate PDF output
             $filename = 'sector_due_' . str_replace(' ', '_', $sector) . '_' . date('Y-m-d') . '.pdf';
             $pdfOutput = $mpdf->Output('', 'S');
+
+            Log::info('Sector Due PDF - PDF Generated Successfully', [
+                'sector' => $sector,
+                'filename' => $filename,
+                'total_families_in_pdf' => $totalFamilies,
+                'total_establishments_in_pdf' => $totalEstablishments,
+                'pdf_size_bytes' => strlen($pdfOutput),
+            ]);
 
             // Return PDF directly to browser
             return response()->make($pdfOutput, 200, [
