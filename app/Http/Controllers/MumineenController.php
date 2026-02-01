@@ -1276,10 +1276,10 @@ class MumineenController extends Controller
             [$currentYear, $prevYear] = $this->resolveYearsSimple();
             $currentYearStr = (string) $currentYear;
 
-            // Get all families in the sector
+            // Get all families in the sector (using LIKE for partial matching)
             $families = MumineenModel::where('hof_type', 'HOF')
                 ->where('status', 'active')
-                ->where('sector', $sector)
+                ->where('sector', 'like', '%' . $sector . '%')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
                 ->select('id', 'family_id', 'its', 'name', 'mobile')
                 ->orderByRaw("CASE 
