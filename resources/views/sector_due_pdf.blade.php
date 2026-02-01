@@ -86,7 +86,7 @@
         }
 
         .establishment-row {
-            background-color: #f9f9f9;
+            background-color: #e3f2fd;
         }
 
         .establishment-row td {
@@ -180,6 +180,7 @@
                 <th class="hub-col text-right">Hub</th>
                 <th class="due-col text-right">Due</th>
                 <th class="prev-due-col text-right">Prev Due</th>
+                <th class="text-left" style="width: 15%;">Remark</th>
             </tr>
         </thead>
         <tbody>
@@ -192,6 +193,7 @@
                     <td class="number">{{ number_format($row['hub'], 2) }}</td>
                     <td class="number">{{ number_format($row['due'], 2) }}</td>
                     <td class="number">{{ number_format($row['prev_due'], 2) }}</td>
+                    <td class="text-left" style="color: #d32f2f; font-weight: 500;">{{ $row['remark'] ?? '' }}</td>
                 </tr>
                 @if(!empty($row['establishments']))
                     @foreach($row['establishments'] as $est)
@@ -203,6 +205,7 @@
                             <td class="number">{{ number_format($est['hub'], 2) }}</td>
                             <td class="number">{{ number_format($est['due'], 2) }}</td>
                             <td class="number">{{ number_format($est['prev_due'], 2) }}</td>
+                            <td class="text-left">-</td>
                         </tr>
                     @endforeach
                 @endif

@@ -1286,11 +1286,17 @@ class MumineenController extends Controller
             $currentYearStr = "2025-26";
 
             // Get all families in the sector (using LIKE for partial matching)
+            $selectFields = ['id', 'family_id', 'its', 'name', 'mobile'];
+            // Add is_takhmeen_updated if column exists
+            if (Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
+                $selectFields[] = 'is_takhmeen_updated';
+            }
+
             $families = MumineenModel::where('hof_type', 'HOF')
                 ->where('status', 'active')
                 ->where('sector', 'like', '%' . $sector . '%')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
-                ->select('id', 'family_id', 'its', 'name', 'mobile')
+                ->select($selectFields)
                 ->orderByRaw("CASE 
                     WHEN sector = 'BURHANI' THEN 1 
                     WHEN sector = 'EZZY' THEN 2 
@@ -1416,6 +1422,15 @@ class MumineenController extends Controller
                     }
                 }
 
+                // Add remark if is_takhmeen_updated is false/0
+                $remark = '';
+                if (Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
+                    $isTakhmeenUpdated = $family->is_takhmeen_updated ?? false;
+                    if (!$isTakhmeenUpdated) {
+                        $remark = 'Takhmeen Not Done';
+                    }
+                }
+
                 $pdfData[] = [
                     'sn' => $serialNumber++,
                     'its' => (string) $family->its,
@@ -1424,6 +1439,7 @@ class MumineenController extends Controller
                     'hub' => $familySabeelCur,
                     'due' => $familyDueCur,
                     'prev_due' => $familyPrevDue,
+                    'remark' => $remark,
                     'establishments' => $establishments,
                 ];
 
