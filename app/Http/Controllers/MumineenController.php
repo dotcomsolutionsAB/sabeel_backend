@@ -1281,25 +1281,13 @@ class MumineenController extends Controller
 
             $sector = trim($sector);
 
-            Log::info('Sector Due PDF - Start', [
-                'sector' => $sector,
-                'sector_like_pattern' => '%' . $sector . '%',
-            ]);
-
             // Get current year
             [$currentYear, $prevYear] = $this->resolveYearsSimple();
             $currentYearStr = "2025-26";
 
-            Log::info('Sector Due PDF - Current Year', [
-                'current_year' => $currentYear,
-                'current_year_str' => $currentYearStr,
-            ]);
-
             // Get all families in the sector (using LIKE for partial matching)
-            // RESTRICTED: Only ITS = 40449002 for debugging
             $families = MumineenModel::where('hof_type', 'HOF')
                 ->where('status', 'active')
-                ->where('its', '40449002') // Restrict to specific ITS for debugging
                 ->where('sector', 'like', '%' . $sector . '%')
                 ->whereNotIn('its', ['20320125', '20303586', '30350003'])
                 ->select('id', 'family_id', 'its', 'name', 'mobile')
@@ -1315,13 +1303,7 @@ class MumineenController extends Controller
                 ->orderBy('name', 'asc')
                 ->get();
 
-            Log::info('Sector Due PDF - Families Found', [
-                'total_families' => $families->count(),
-                'family_ids' => $families->pluck('family_id')->toArray(),
-            ]);
-
             if ($families->isEmpty()) {
-                Log::warning('Sector Due PDF - No families found', ['sector' => $sector]);
                 return response()->json([
                     'code' => 404,
                     'status' => 'error',
@@ -1336,20 +1318,10 @@ class MumineenController extends Controller
 
             $familyIds = $families->pluck('family_id')->unique()->values()->all();
 
-            Log::info('Sector Due PDF - Fetching Data', [
-                'unique_family_ids_count' => count($familyIds),
-                'family_ids' => $familyIds,
-            ]);
-
             // Get all family sabeel data
             $familySabeel = MumineenSabeelModel::whereIn('family_id', $familyIds)
                 ->get()
                 ->groupBy('family_id');
-
-            Log::info('Sector Due PDF - Family Sabeel Data', [
-                'sabeel_records_count' => $familySabeel->count(),
-                'sabeel_families' => $familySabeel->keys()->toArray(),
-            ]);
 
             // Get all family receipts paid by year
             $familyPaid = ReceiptModel::select('family_id', 'year', DB::raw('SUM(amount) as paid'))
@@ -1358,11 +1330,6 @@ class MumineenController extends Controller
                 ->groupBy('family_id', 'year')
                 ->get()
                 ->groupBy('family_id');
-
-            Log::info('Sector Due PDF - Family Receipts Data', [
-                'receipt_records_count' => $familyPaid->count(),
-                'receipt_families' => $familyPaid->keys()->toArray(),
-            ]);
 
             // Get establishment links
             $links = MumineenEstablishmentModel::with('establishment')
@@ -1391,11 +1358,6 @@ class MumineenController extends Controller
             $totalFamilies = 0;
             $totalEstablishments = 0;
             $skippedFamilies = [];
-            $calculationLogs = []; // Store calculation details for response
-
-            Log::info('Sector Due PDF - Processing Families', [
-                'families_to_process' => $families->count(),
-            ]);
 
             foreach ($families as $family) {
                 $familyId = $family->family_id;
@@ -1413,73 +1375,10 @@ class MumineenController extends Controller
                 $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
                 $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
 
-                // Store calculation log for this family
-                $calculationLog = [
-                    'family_id' => $familyId,
-                    'its' => $family->its,
-                    'name' => $family->name,
-                    'current_year' => $currentYearStr,
-                    'sabeel_calculation' => [
-                        'source' => 't_mumineen_sabeel.sabeel',
-                        'year' => $currentYearStr,
-                        'sabeel_record_found' => $sabeelRecord !== null,
-                        'sabeel_value' => $familySabeelCur,
-                        'raw_sabeel' => $sabeelRecord ? $sabeelRecord->sabeel : null,
-                    ],
-                    'receipts_calculation' => [
-                        'source' => 't_receipts (status=active)',
-                        'year' => $currentYearStr,
-                        'receipt_record_found' => $receiptRecord !== null,
-                        'paid_amount' => $familyPaidCur,
-                        'raw_paid' => $receiptRecord ? $receiptRecord->paid : null,
-                    ],
-                    'due_calculation' => [
-                        'formula' => 'max(0, sabeel - paid)',
-                        'sabeel' => $familySabeelCur,
-                        'paid' => $familyPaidCur,
-                        'due' => $familyDueCur,
-                    ],
-                    'prev_due' => $familyPrevDue,
-                ];
-
-                Log::debug('Sector Due PDF - Family Calculation', [
-                    'family_id' => $familyId,
-                    'its' => $family->its,
-                    'name' => $family->name,
-                    'hub' => $familySabeelCur,
-                    'paid' => $familyPaidCur,
-                    'due' => $familyDueCur,
-                    'prev_due' => $familyPrevDue,
-                    'current_year' => $currentYearStr,
-                ]);
-
                 // Skip families with current year due == 0
                 if ($familyDueCur == 0) {
-                    $calculationLog['skipped'] = true;
-                    $calculationLog['skip_reason'] = 'due == 0';
-                    $skippedFamilies[] = [
-                        'family_id' => $familyId,
-                        'its' => $family->its,
-                        'name' => $family->name,
-                        'reason' => 'due == 0',
-                        'hub' => $familySabeelCur,
-                        'paid' => $familyPaidCur,
-                        'due' => $familyDueCur,
-                    ];
-                    $calculationLogs[] = $calculationLog;
-                    Log::debug('Sector Due PDF - Family Skipped (due == 0)', [
-                        'family_id' => $familyId,
-                        'its' => $family->its,
-                        'name' => $family->name,
-                        'hub' => $familySabeelCur,
-                        'paid' => $familyPaidCur,
-                        'due' => $familyDueCur,
-                    ]);
                     continue;
                 }
-
-                $calculationLog['included'] = true;
-                $calculationLogs[] = $calculationLog;
 
                 // Get establishments for this family
                 $familyLinks = $links->get($familyId) ?? collect();
@@ -1529,53 +1428,9 @@ class MumineenController extends Controller
                 ];
 
                 $totalFamilies++;
-
-                Log::debug('Sector Due PDF - Family Added', [
-                    'family_id' => $familyId,
-                    'its' => $family->its,
-                    'name' => $family->name,
-                    'hub' => $familySabeelCur,
-                    'due' => $familyDueCur,
-                    'prev_due' => $familyPrevDue,
-                    'establishments_count' => count($establishments),
-                ]);
             }
 
-            Log::info('Sector Due PDF - Processing Complete', [
-                'total_families_processed' => $families->count(),
-                'families_included' => $totalFamilies,
-                'families_skipped' => count($skippedFamilies),
-                'skipped_families' => $skippedFamilies,
-                'total_establishments' => $totalEstablishments,
-                'pdf_data_count' => count($pdfData),
-            ]);
-
-            // Return calculation logs in JSON response for debugging
-            return response()->json([
-                'code' => 200,
-                'status' => 'success',
-                'message' => 'Calculation logs for ITS 40449002',
-                'data' => [
-                    'sector' => $sector,
-                    'current_year' => $currentYearStr,
-                    'total_families_found' => $families->count(),
-                    'families_included' => $totalFamilies,
-                    'families_skipped' => count($skippedFamilies),
-                    'total_establishments' => $totalEstablishments,
-                    'calculation_logs' => $calculationLogs,
-                    'skipped_families' => $skippedFamilies,
-                    'pdf_data' => $pdfData,
-                ],
-            ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-            /* Original PDF generation code (commented out for debugging)
             if (empty($pdfData)) {
-                Log::warning('Sector Due PDF - No data to generate PDF', [
-                    'sector' => $sector,
-                    'total_families_found' => $families->count(),
-                    'families_skipped' => count($skippedFamilies),
-                    'skipped_details' => $skippedFamilies,
-                ]);
                 return response()->json([
                     'code' => 404,
                     'status' => 'error',
@@ -1584,8 +1439,6 @@ class MumineenController extends Controller
                         'sector' => $sector,
                         'current_year' => $currentYearStr,
                         'total_families_found' => $families->count(),
-                        'families_skipped' => count($skippedFamilies),
-                        'skipped_families' => $skippedFamilies,
                         'reason' => 'All families have due == 0 for current year',
                     ],
                 ], 404, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -1616,31 +1469,14 @@ class MumineenController extends Controller
             $filename = 'sector_due_' . str_replace(' ', '_', $sector) . '_' . date('Y-m-d') . '.pdf';
             $pdfOutput = $mpdf->Output('', 'S');
 
-            Log::info('Sector Due PDF - PDF Generated Successfully', [
-                'sector' => $sector,
-                'filename' => $filename,
-                'total_families_in_pdf' => $totalFamilies,
-                'total_establishments_in_pdf' => $totalEstablishments,
-                'pdf_size_bytes' => strlen($pdfOutput),
-            ]);
-
             // Return PDF directly to browser
             return response()->make($pdfOutput, 200, [
                 'Content-Type' => 'application/pdf',
                 'Content-Disposition' => 'inline; filename="' . $filename . '"',
                 'Cache-Control' => 'public, max-age=0',
             ]);
-            */
 
         } catch (\Throwable $e) {
-            Log::error('Sector Due PDF - Exception', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-                'sector' => $sector ?? 'unknown',
-            ]);
-
             return response()->json([
                 'code' => 500,
                 'status' => 'error',
