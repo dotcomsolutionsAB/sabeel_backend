@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/export', [MumineenController::class, 'export']);
         Route::get('/sync_image', [MumineenController::class, 'syncAllPhotos']);
         Route::post('/sync_photos_its', [MumineenController::class, 'syncPhotosFromRemote']);
+        Route::get('/sector-due-pdf/{sector}', [MumineenController::class, 'generateSectorDuePdf']);
     });
 
     // mumineen-sabeel route

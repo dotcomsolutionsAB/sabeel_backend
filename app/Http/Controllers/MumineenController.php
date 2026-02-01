@@ -23,6 +23,7 @@ use App\Models\AdvancePaidModel;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Mpdf\Mpdf;
 
 class MumineenController extends Controller
 {
@@ -1251,5 +1252,228 @@ class MumineenController extends Controller
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Verification update failed');
         }
+    }
+
+    /**
+     * Generate Sector Due PDF
+     * GET /family/sector-due-pdf/{sector}
+     * Example: /family/sector-due-pdf/BURHANI
+     */
+    public function generateSectorDuePdf(Request $request, $sector)
+    {
+        try {
+            $validator = Validator::make(['sector' => $sector], [
+                'sector' => 'required|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $sector = trim($sector);
+
+            // Get current year
+            [$currentYear, $prevYear] = $this->resolveYearsSimple();
+            $currentYearStr = (string) $currentYear;
+
+            // Get all families in the sector
+            $families = MumineenModel::where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->where('sector', $sector)
+                ->whereNotIn('its', ['20320125', '20303586', '30350003'])
+                ->select('id', 'family_id', 'its', 'name', 'mobile')
+                ->orderByRaw("CASE 
+                    WHEN sector = 'BURHANI' THEN 1 
+                    WHEN sector = 'EZZY' THEN 2 
+                    WHEN sector = 'MOHAMMEDI' THEN 3 
+                    WHEN sector = 'SHUJAI' THEN 4 
+                    WHEN sector = 'ZAINY' THEN 5 
+                    ELSE 6 
+                END")
+                ->orderBy('sub_sector', 'asc')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            if ($families->isEmpty()) {
+                return $this->error('No families found for sector: ' . $sector, 404);
+            }
+
+            $familyIds = $families->pluck('family_id')->unique()->values()->all();
+
+            // Get all family sabeel data
+            $familySabeel = MumineenSabeelModel::whereIn('family_id', $familyIds)
+                ->get()
+                ->groupBy('family_id');
+
+            // Get all family receipts paid by year
+            $familyPaid = ReceiptModel::select('family_id', 'year', DB::raw('SUM(amount) as paid'))
+                ->whereIn('family_id', $familyIds)
+                ->where('status', 'active')
+                ->groupBy('family_id', 'year')
+                ->get()
+                ->groupBy('family_id');
+
+            // Get establishment links
+            $links = MumineenEstablishmentModel::with('establishment')
+                ->whereIn('family_id', $familyIds)
+                ->get()
+                ->groupBy('family_id');
+
+            $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
+
+            // Get establishment sabeel
+            $estSabeel = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
+                ->get()
+                ->groupBy('establishment_id');
+
+            // Get establishment receipts paid by year
+            $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
+                ->whereIn('establishment_id', $estIds)
+                ->where('status', 'active')
+                ->groupBy('establishment_id', 'year')
+                ->get()
+                ->groupBy('establishment_id');
+
+            // Process families and filter by total due
+            $pdfData = [];
+            $serialNumber = 1;
+            $totalFamilies = 0;
+            $totalEstablishments = 0;
+
+            foreach ($families as $family) {
+                $familyId = $family->family_id;
+
+                // Calculate family hub, due, and prev_due
+                $familySabeelCur = (int) optional($familySabeel->get($familyId))
+                    ?->firstWhere('year', $currentYearStr)
+                    ?->sabeel ?? 0;
+
+                $familyPaidCur = (float) optional($familyPaid->get($familyId))
+                    ?->firstWhere('year', $currentYearStr)
+                    ?->paid ?? 0;
+
+                $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
+                $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
+                $familyTotalDue = $familyDueCur + $familyPrevDue;
+
+                // Skip families with total due == 0
+                if ($familyTotalDue == 0) {
+                    continue;
+                }
+
+                // Get establishments for this family
+                $familyLinks = $links->get($familyId) ?? collect();
+                $estCodesForFamily = $familyLinks->unique('establishment_id')->pluck('establishment_id')->filter()->unique()->values()->all();
+
+                $establishments = [];
+                foreach ($familyLinks->unique('establishment_id') as $lnk) {
+                    $estId = (string) $lnk->establishment_id;
+                    $estName = (string) (optional($lnk->establishment)->name ?? '');
+
+                    // Calculate establishment hub, due, and prev_due
+                    $estSabeelCur = (int) optional($estSabeel->get($estId))
+                        ?->firstWhere('year', $currentYearStr)
+                        ?->sabeel ?? 0;
+
+                    $estPaidCur = (float) optional($estPaid->get($estId))
+                        ?->firstWhere('year', $currentYearStr)
+                        ?->paid ?? 0;
+
+                    $estDueCur = max(0, $estSabeelCur - $estPaidCur);
+
+                    // Calculate prev_due for this establishment
+                    $estPrevDue = $this->calculateEstablishmentPrevDue($estId, $currentYearStr);
+                    $estTotalDue = $estDueCur + $estPrevDue;
+
+                    // Only include establishments with total due > 0
+                    if ($estTotalDue > 0) {
+                        $establishments[] = [
+                            'name' => $estName,
+                            'hub' => $estSabeelCur,
+                            'due' => $estDueCur,
+                            'prev_due' => $estPrevDue,
+                        ];
+                        $totalEstablishments++;
+                    }
+                }
+
+                $pdfData[] = [
+                    'sn' => $serialNumber++,
+                    'its' => (string) $family->its,
+                    'name' => (string) $family->name,
+                    'mobile' => (string) ($family->mobile ?? ''),
+                    'hub' => $familySabeelCur,
+                    'due' => $familyDueCur,
+                    'prev_due' => $familyPrevDue,
+                    'establishments' => $establishments,
+                ];
+
+                $totalFamilies++;
+            }
+
+            if (empty($pdfData)) {
+                return $this->error('No families with due found for sector: ' . $sector, 404);
+            }
+
+            // Generate PDF
+            $html = view('sector_due_pdf', [
+                'sector' => $sector,
+                'currentYear' => $currentYear,
+                'data' => $pdfData,
+                'generatedDate' => date('d-m-Y'),
+            ])->render();
+
+            // Initialize mPDF
+            $mpdf = new Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 15,
+                'margin_bottom' => 15,
+            ]);
+
+            $mpdf->WriteHTML($html);
+
+            // Generate PDF output
+            $filename = 'sector_due_' . str_replace(' ', '_', $sector) . '_' . date('Y-m-d') . '.pdf';
+            $pdfOutput = $mpdf->Output('', 'S');
+
+            // Return PDF directly to browser
+            return response()->make($pdfOutput, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+                'Cache-Control' => 'public, max-age=0',
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Sector due PDF generation failed');
+        }
+    }
+
+    /**
+     * Calculate establishment previous years due (single establishment)
+     */
+    private function calculateEstablishmentPrevDue(string $establishmentId, string $currentYear): float
+    {
+        $sabeelEntries = EstablishmentSabeelModel::where('establishment_id', $establishmentId)
+            ->where('year', '<', $currentYear)
+            ->get();
+
+        $totalPrevDue = 0;
+
+        foreach ($sabeelEntries as $entry) {
+            $year = $entry->year;
+            $sabeel = (float) $entry->sabeel;
+            $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
+                ->where('year', $year)
+                ->where('status', 'active')
+                ->sum('amount') ?? 0;
+            $due = max(0, $sabeel - $paid);
+            $totalPrevDue += $due;
+        }
+
+        return $totalPrevDue;
     }
 }
