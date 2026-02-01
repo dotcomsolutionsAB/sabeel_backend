@@ -52,7 +52,6 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/export', [MumineenController::class, 'export']);
         Route::get('/sync_image', [MumineenController::class, 'syncAllPhotos']);
         Route::post('/sync_photos_its', [MumineenController::class, 'syncPhotosFromRemote']);
-        Route::get('/sector-due-pdf/{sector}', [MumineenController::class, 'generateSectorDuePdf']);
     });
 
     // mumineen-sabeel route
@@ -161,6 +160,9 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/due-followup', [WhatsAppController::class, 'sendDueFollowup']);
     });
 });
+
+// Public endpoints (no auth required)
+Route::get('/family/sector-due-pdf/{sector}', [MumineenController::class, 'generateSectorDuePdf']);
 
 // Public cron endpoint (no auth required, but token protected)
 // Accepts both GET and POST for browser/cron compatibility
