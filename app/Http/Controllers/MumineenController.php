@@ -1354,10 +1354,9 @@ class MumineenController extends Controller
 
                 $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
                 $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
-                $familyTotalDue = $familyDueCur + $familyPrevDue;
 
-                // Skip families with total due == 0
-                if ($familyTotalDue == 0) {
+                // Skip families with current year due == 0
+                if ($familyDueCur == 0) {
                     continue;
                 }
 
