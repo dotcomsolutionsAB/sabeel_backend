@@ -1568,8 +1568,7 @@ class MumineenController extends Controller
                 ],
             ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-            // Original PDF generation code (commented out for debugging)
-            /*
+            /* Original PDF generation code (commented out for debugging)
             if (empty($pdfData)) {
                 Log::warning('Sector Due PDF - No data to generate PDF', [
                     'sector' => $sector,
@@ -1631,6 +1630,7 @@ class MumineenController extends Controller
                 'Content-Disposition' => 'inline; filename="' . $filename . '"',
                 'Cache-Control' => 'public, max-age=0',
             ]);
+            */
 
         } catch (\Throwable $e) {
             Log::error('Sector Due PDF - Exception', [
