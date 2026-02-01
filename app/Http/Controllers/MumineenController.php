@@ -1288,7 +1288,7 @@ class MumineenController extends Controller
 
             // Get current year
             [$currentYear, $prevYear] = $this->resolveYearsSimple();
-            $currentYearStr = (string) $currentYear;
+            $currentYearStr = "2025-26";
 
             Log::info('Sector Due PDF - Current Year', [
                 'current_year' => $currentYear,
