@@ -1381,11 +1381,6 @@ class MumineenController extends Controller
                 $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
                 $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
 
-                // Skip families with current year due == 0
-                if ($familyDueCur == 0) {
-                    continue;
-                }
-
                 // Get establishments for this family
                 $familyLinks = $links->get($familyId) ?? collect();
                 $estCodesForFamily = $familyLinks->unique('establishment_id')->pluck('establishment_id')->filter()->unique()->values()->all();
@@ -1420,6 +1415,11 @@ class MumineenController extends Controller
                         ];
                         $totalEstablishments++;
                     }
+                }
+
+                // Skip families only if both family due == 0 AND no establishments with due > 0
+                if ($familyDueCur == 0 && empty($establishments)) {
+                    continue;
                 }
 
                 // Add remark if is_takhmeen_updated is false/0
