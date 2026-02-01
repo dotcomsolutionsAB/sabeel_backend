@@ -1268,7 +1268,15 @@ class MumineenController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return $this->validation($validator);
+                return response()->json([
+                    'code' => 422,
+                    'status' => 'error',
+                    'message' => $validator->errors()->first(),
+                    'errors' => $validator->errors()->all(),
+                    'debug' => [
+                        'sector_received' => $sector,
+                    ],
+                ], 422, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             }
 
             $sector = trim($sector);
@@ -1312,7 +1320,16 @@ class MumineenController extends Controller
 
             if ($families->isEmpty()) {
                 Log::warning('Sector Due PDF - No families found', ['sector' => $sector]);
-                return $this->error('No families found for sector: ' . $sector, 404);
+                return response()->json([
+                    'code' => 404,
+                    'status' => 'error',
+                    'message' => 'No families found for sector: ' . $sector,
+                    'debug' => [
+                        'sector' => $sector,
+                        'sector_like_pattern' => '%' . $sector . '%',
+                        'current_year' => $currentYearStr,
+                    ],
+                ], 404, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             }
 
             $familyIds = $families->pluck('family_id')->unique()->values()->all();
@@ -1501,7 +1518,19 @@ class MumineenController extends Controller
                     'families_skipped' => count($skippedFamilies),
                     'skipped_details' => $skippedFamilies,
                 ]);
-                return $this->error('No families with due found for sector: ' . $sector, 404);
+                return response()->json([
+                    'code' => 404,
+                    'status' => 'error',
+                    'message' => 'No families with due found for sector: ' . $sector,
+                    'debug' => [
+                        'sector' => $sector,
+                        'current_year' => $currentYearStr,
+                        'total_families_found' => $families->count(),
+                        'families_skipped' => count($skippedFamilies),
+                        'skipped_families' => $skippedFamilies,
+                        'reason' => 'All families have due == 0 for current year',
+                    ],
+                ], 404, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             }
 
             // Generate PDF
@@ -1545,7 +1574,25 @@ class MumineenController extends Controller
             ]);
 
         } catch (\Throwable $e) {
-            return $this->serverError($e, 'Sector due PDF generation failed');
+            Log::error('Sector Due PDF - Exception', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'sector' => $sector ?? 'unknown',
+            ]);
+
+            return response()->json([
+                'code' => 500,
+                'status' => 'error',
+                'message' => 'Sector due PDF generation failed',
+                'debug' => [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'sector' => $sector ?? 'unknown',
+                ],
+            ], 500, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         }
     }
 
