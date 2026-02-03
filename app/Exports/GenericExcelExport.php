@@ -11,22 +11,39 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
-class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEvents, ShouldAutoSize
+class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEvents, ShouldAutoSize, WithColumnFormatting
 {
     protected array $rows;
     protected array $headings;
     protected array $alignments;
+    protected array $columnFormats;
 
     // Optional: which column contains "TOTAL" label (e.g. 'F' for your dashboard exports)
     protected ?string $totalLabelColumn;
 
-    public function __construct(array $rows, array $headings, array $alignments = [], ?string $totalLabelColumn = null)
-    {
+    // public function __construct(array $rows, array $headings, array $alignments = [], ?string $totalLabelColumn = null)
+    // {
+    //     $this->rows = $rows;
+    //     $this->headings = $headings;
+    //     $this->alignments = $alignments;
+    //     $this->totalLabelColumn = $totalLabelColumn; // pass 'F' if you want conditional bold
+    // }
+
+    public function __construct(
+        array $rows,
+        array $headings,
+        array $alignments = [],
+        ?string $totalLabelColumn = null,
+        array $columnFormats = []
+    ) {
         $this->rows = $rows;
         $this->headings = $headings;
         $this->alignments = $alignments;
-        $this->totalLabelColumn = $totalLabelColumn; // pass 'F' if you want conditional bold
+        $this->totalLabelColumn = $totalLabelColumn;
+        $this->columnFormats = $columnFormats;
     }
 
     public function array(): array
@@ -95,5 +112,10 @@ class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEve
                 }
             },
         ];
+    }
+
+    public function columnFormats(): array
+    {
+        return $this->columnFormats;
     }
 }
