@@ -708,7 +708,7 @@ class ReceiptController extends Controller
                     $r->bank,
                     $r->cheque_no,
                     optional($r->cheque_date)->format('d-m-Y'),
-                    $r->transaction_no,
+                    (string) $r->transaction_no,
                     optional($r->transaction_date)->format('d-m-Y'),
 
                     $statusLabel,
