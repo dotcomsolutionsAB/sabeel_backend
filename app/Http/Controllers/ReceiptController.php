@@ -548,6 +548,89 @@ class ReceiptController extends Controller
     }
 
     // export
+    // public function export(Request $request)
+    // {
+    //     try {
+    //         $type     = $request->input('type'); // family | establishment | null
+    //         $dateFrom = $request->input('date_from');
+    //         $dateTo   = $request->input('date_to');
+
+    //         $q = ReceiptModel::query()
+    //             ->where('status', 'active')
+    //             ->orderBy('receipt_no', 'desc');
+
+    //         // ✅ SAME TYPE LOGIC as fetch()
+    //         if ($type === 'family') {
+    //             $q->whereNotNull('family_id');
+    //         } elseif ($type === 'establishment') {
+    //             $q->whereNotNull('establishment_id');
+    //         } else {
+    //             $q->where(function ($query) {
+    //                 $query->whereNotNull('family_id')
+    //                     ->orWhereNotNull('establishment_id');
+    //             });
+    //         }
+
+    //         // ✅ SAME filters as fetch()
+    //         if ($request->filled('family_id')) {
+    //             $q->where('family_id', (int) $request->family_id);
+    //         }
+
+    //         if ($request->filled('establishment_id')) {
+    //             $q->where('establishment_id', (int) $request->establishment_id);
+    //         }
+
+    //         if (!empty($dateFrom) && strtotime($dateFrom) !== false) {
+    //             $q->whereDate('date', '>=', $dateFrom);
+    //         }
+
+    //         if (!empty($dateTo) && strtotime($dateTo) !== false) {
+    //             $q->whereDate('date', '<=', $dateTo);
+    //         }
+
+    //         // ✅ NO pagination
+    //         $rows = $q->get();
+
+    //         if ($rows->isEmpty()) {
+    //             return $this->error('No data found for export.', 404);
+    //         }
+
+    //         $excelRows = [];
+    //         $sn = 1;
+
+    //         foreach ($rows as $r) {
+    //             $excelRows[] = [
+    //                 $sn++,
+    //                 $r->receipt_no,
+    //                 optional($r->date)->format('d-m-Y'),
+    //                 $r->name,
+    //                 (float) $r->amount,
+    //                 $r->mode,
+    //                 ucfirst($r->status),
+    //             ];
+    //         }
+
+    //         $export = new GenericExcelExport(
+    //             $excelRows,
+    //             ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
+    //             [
+    //                 'A' => Alignment::HORIZONTAL_CENTER,
+    //                 'B' => Alignment::HORIZONTAL_CENTER,
+    //                 'C' => Alignment::HORIZONTAL_CENTER,
+    //                 'D' => Alignment::HORIZONTAL_LEFT,
+    //                 'E' => Alignment::HORIZONTAL_RIGHT,
+    //                 'F' => Alignment::HORIZONTAL_CENTER,
+    //                 'G' => Alignment::HORIZONTAL_CENTER,
+    //             ]
+    //         );
+
+    //         return ExcelExportHelper::store($export, 'receipt', 'receipt_export');
+
+    //     } catch (\Throwable $e) {
+    //         return $this->serverError($e, 'Receipt export failed');
+    //     }
+    // }
+
     public function export(Request $request)
     {
         try {
@@ -556,7 +639,8 @@ class ReceiptController extends Controller
             $dateTo   = $request->input('date_to');
 
             $q = ReceiptModel::query()
-                ->where('status', 'active')
+                ->with(['establishment']) // ✅ for Est. Name
+                ->whereIn('status', ['active', 'cancelled']) // export both, but you can keep only active if you want
                 ->orderBy('receipt_no', 'desc');
 
             // ✅ SAME TYPE LOGIC as fetch()
@@ -599,28 +683,73 @@ class ReceiptController extends Controller
             $sn = 1;
 
             foreach ($rows as $r) {
+
+                // ✅ Type column
+                $typeLabel = $r->establishment_id ? 'Establishment' : 'Personal';
+
+                // ✅ Establishment name only if establishment_id exists
+                // NOTE: adjust field name based on EstablishmentModel column (name / establishment_name / firm_name etc.)
+                $estName = $r->establishment_id ? ($r->establishment->name ?? '') : '';
+
+                // ✅ Status rule: active => blank, cancelled => cancelled
+                $statusLabel = ($r->status === 'cancelled') ? 'cancelled' : '';
+
                 $excelRows[] = [
                     $sn++,
                     $r->receipt_no,
                     optional($r->date)->format('d-m-Y'),
                     $r->name,
+                    $typeLabel,
+                    $estName,
                     (float) $r->amount,
                     $r->mode,
-                    ucfirst($r->status),
+
+                    // New fields
+                    $r->bank,
+                    $r->cheque_no,
+                    optional($r->cheque_date)->format('d-m-Y'),
+                    $r->transaction_no,
+                    optional($r->transaction_date)->format('d-m-Y'),
+
+                    $statusLabel,
                 ];
             }
 
+            $headers = [
+                'SN',
+                'Receipt No',
+                'Date',
+                'Name',
+                'Type',
+                'Est. Name',
+                'Amount',
+                'Mode',
+                'Bank',
+                'Cheque No',
+                'Cheque Date',
+                'Transaction No',
+                'Transaction Date',
+                'Status',
+            ];
+
             $export = new GenericExcelExport(
                 $excelRows,
-                ['SN','Receipt No','Date','Name','Amount','Mode','Status'],
+                $headers,
                 [
-                    'A' => Alignment::HORIZONTAL_CENTER,
-                    'B' => Alignment::HORIZONTAL_CENTER,
-                    'C' => Alignment::HORIZONTAL_CENTER,
-                    'D' => Alignment::HORIZONTAL_LEFT,
-                    'E' => Alignment::HORIZONTAL_RIGHT,
-                    'F' => Alignment::HORIZONTAL_CENTER,
-                    'G' => Alignment::HORIZONTAL_CENTER,
+                    'A' => Alignment::HORIZONTAL_CENTER, // SN
+                    'B' => Alignment::HORIZONTAL_CENTER, // Receipt No
+                    'C' => Alignment::HORIZONTAL_CENTER, // Date
+                    'D' => Alignment::HORIZONTAL_LEFT,   // Name
+                    'E' => Alignment::HORIZONTAL_CENTER, // Type
+                    'F' => Alignment::HORIZONTAL_LEFT,   // Est. Name
+                    'G' => Alignment::HORIZONTAL_RIGHT,  // Amount
+                    'H' => Alignment::HORIZONTAL_CENTER, // Mode
+                    'I' => Alignment::HORIZONTAL_LEFT,   // Bank
+                    'J' => Alignment::HORIZONTAL_CENTER, // Cheque No
+                    'K' => Alignment::HORIZONTAL_CENTER, // Cheque Date
+                    'L' => Alignment::HORIZONTAL_CENTER, // Transaction No
+                    'M' => Alignment::HORIZONTAL_CENTER, // Transaction Date
+                    'N' => Alignment::HORIZONTAL_CENTER, // Status
                 ]
             );
 
