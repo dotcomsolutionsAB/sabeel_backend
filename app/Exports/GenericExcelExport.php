@@ -11,26 +11,31 @@ use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
-class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEvents, ShouldAutoSize, WithColumnFormatting
+// ✅ NEW (binder)
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
+
+class GenericExcelExport extends DefaultValueBinder implements
+    FromArray,
+    WithHeadings,
+    WithStyles,
+    WithEvents,
+    ShouldAutoSize,
+    WithColumnFormatting,
+    WithCustomValueBinder
 {
     protected array $rows;
     protected array $headings;
     protected array $alignments;
     protected array $columnFormats;
 
-    // Optional: which column contains "TOTAL" label (e.g. 'F' for your dashboard exports)
     protected ?string $totalLabelColumn;
-
-    // public function __construct(array $rows, array $headings, array $alignments = [], ?string $totalLabelColumn = null)
-    // {
-    //     $this->rows = $rows;
-    //     $this->headings = $headings;
-    //     $this->alignments = $alignments;
-    //     $this->totalLabelColumn = $totalLabelColumn; // pass 'F' if you want conditional bold
-    // }
 
     public function __construct(
         array $rows,
@@ -56,7 +61,25 @@ class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEve
         return $this->headings;
     }
 
-    // Header: bold + centered
+    public function columnFormats(): array
+    {
+        return $this->columnFormats;
+    }
+
+    // ✅ NEW: force TEXT columns to be written as STRING
+    public function bindValue(Cell $cell, $value): bool
+    {
+        $col = $cell->getColumn(); // e.g. "L"
+
+        // If this column is set as TEXT format, write it explicitly as STRING
+        if (isset($this->columnFormats[$col]) && $this->columnFormats[$col] === NumberFormat::FORMAT_TEXT) {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
+    }
+
     public function styles(Worksheet $sheet)
     {
         return [
@@ -80,10 +103,8 @@ class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEve
                 $highestCol = $sheet->getHighestColumn();
                 $range = "A1:{$highestCol}{$highestRow}";
 
-                // Wrap text to avoid cut-offs
                 $sheet->getStyle($range)->getAlignment()->setWrapText(true);
 
-                // Borders for all cells
                 $sheet->getStyle($range)->applyFromArray([
                     'borders' => [
                         'allBorders' => [
@@ -92,17 +113,14 @@ class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEve
                     ],
                 ]);
 
-                // Apply per-column alignments (data rows only)
                 foreach ($this->alignments as $col => $align) {
                     $sheet->getStyle("{$col}2:{$col}{$highestRow}")
                         ->getAlignment()
                         ->setHorizontal($align);
                 }
 
-                // Freeze header row
                 $sheet->freezePane('A2');
 
-                // Optional: bold last row only if it is TOTAL
                 if ($this->totalLabelColumn) {
                     $cellVal = (string) $sheet->getCell($this->totalLabelColumn . $highestRow)->getValue();
                     if (strtoupper(trim($cellVal)) === 'TOTAL') {
@@ -112,10 +130,5 @@ class GenericExcelExport implements FromArray, WithHeadings, WithStyles, WithEve
                 }
             },
         ];
-    }
-
-    public function columnFormats(): array
-    {
-        return $this->columnFormats;
     }
 }
