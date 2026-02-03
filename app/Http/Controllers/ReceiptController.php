@@ -754,33 +754,33 @@ class ReceiptController extends Controller
             // );
 
 
-$export = new GenericExcelExport(
-    $excelRows,
-    $headers,
-    [
-        'A' => Alignment::HORIZONTAL_CENTER, // SN
-        'B' => Alignment::HORIZONTAL_CENTER, // Receipt No
-        'C' => Alignment::HORIZONTAL_CENTER, // Date
-        'D' => Alignment::HORIZONTAL_LEFT,   // Name
-        'E' => Alignment::HORIZONTAL_CENTER, // Type
-        'F' => Alignment::HORIZONTAL_LEFT,   // Est. Name
-        'G' => Alignment::HORIZONTAL_RIGHT,  // Amount
-        'H' => Alignment::HORIZONTAL_CENTER, // Mode
-        'I' => Alignment::HORIZONTAL_LEFT,   // Bank
-        'J' => Alignment::HORIZONTAL_CENTER, // Cheque No
-        'K' => Alignment::HORIZONTAL_CENTER, // Cheque Date
-        'L' => Alignment::HORIZONTAL_CENTER, // Transaction No
-        'M' => Alignment::HORIZONTAL_CENTER, // Transaction Date
-        'N' => Alignment::HORIZONTAL_CENTER, // Status
-    ],
-    null, // ✅ totalLabelColumn (not needed)
-    [
-        'L' => NumberFormat::FORMAT_TEXT, // ✅ Transaction No as TEXT
-        // optional (if you want these also as text):
-        // 'J' => NumberFormat::FORMAT_TEXT, // Cheque No
-        // 'B' => NumberFormat::FORMAT_TEXT, // Receipt No
-    ]
-);
+        $export = new GenericExcelExport(
+            $excelRows,
+            $headers,
+            [
+                'A' => Alignment::HORIZONTAL_CENTER, // SN
+                'B' => Alignment::HORIZONTAL_CENTER, // Receipt No
+                'C' => Alignment::HORIZONTAL_CENTER, // Date
+                'D' => Alignment::HORIZONTAL_LEFT,   // Name
+                'E' => Alignment::HORIZONTAL_CENTER, // Type
+                'F' => Alignment::HORIZONTAL_LEFT,   // Est. Name
+                'G' => Alignment::HORIZONTAL_RIGHT,  // Amount
+                'H' => Alignment::HORIZONTAL_CENTER, // Mode
+                'I' => Alignment::HORIZONTAL_LEFT,   // Bank
+                'J' => Alignment::HORIZONTAL_CENTER, // Cheque No
+                'K' => Alignment::HORIZONTAL_CENTER, // Cheque Date
+                'L' => Alignment::HORIZONTAL_CENTER, // Transaction No
+                'M' => Alignment::HORIZONTAL_CENTER, // Transaction Date
+                'N' => Alignment::HORIZONTAL_CENTER, // Status
+            ],
+            null, // ✅ totalLabelColumn (not needed)
+            [
+                'L' => NumberFormat::FORMAT_TEXT, // ✅ Transaction No as TEXT
+                // optional (if you want these also as text):
+                // 'J' => NumberFormat::FORMAT_TEXT, // Cheque No
+                // 'B' => NumberFormat::FORMAT_TEXT, // Receipt No
+            ]
+        );
 
             return ExcelExportHelper::store($export, 'receipt', 'receipt_export');
 
