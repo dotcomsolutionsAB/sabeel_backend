@@ -1459,7 +1459,7 @@ $mpdf = new \Mpdf\Mpdf([
         $receiptNo = $this->nextReceiptNo();
 
         $receipt = ReceiptModel::create([
-            'family_id'        => $familyId,
+            'family_id'        => $establishmentId ? null : $familyId,
             'establishment_id' => $establishmentId,
             'receipt_no'       => $receiptNo,
             'date'             => $date,
@@ -1582,7 +1582,7 @@ $mpdf = new \Mpdf\Mpdf([
         $receiptNo = $this->nextReceiptNo();
 
         $receipt = ReceiptModel::create([
-            'family_id'        => $actualFamilyId,
+            'family_id'        => $establishmentId ? null : $actualFamilyId,
             'establishment_id' => $establishmentId,
             'receipt_no'       => $receiptNo,
             'date'             => $date,
