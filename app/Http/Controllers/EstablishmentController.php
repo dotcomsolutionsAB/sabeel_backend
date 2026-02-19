@@ -63,10 +63,12 @@ class EstablishmentController extends Controller
     /**
      * FETCH list/single
      * POST /establishment/retrieve/{id?}
+     * List is sorted by name (A–Z).
      * Body:
      * {
      *   "search": "",
      *   "filter": "due|prev_due|new_takhmeen_pending|not_tagged|manufacturer",
+     *   "alphabet": "A"|"B"|...|"Z" or "Others" (names not starting with A–Z),
      *   "limit": 10,
      *   "offset": 0
      * }
@@ -96,10 +98,11 @@ class EstablishmentController extends Controller
             }
 
             // LIST
-            $limit  = max(1, (int) $request->input('limit', 10));
-            $offset = max(0, (int) $request->input('offset', 0));
-            $search = trim((string) $request->input('search', ''));
-            $filter = trim((string) $request->input('filter', ''));
+            $limit   = max(1, (int) $request->input('limit', 10));
+            $offset  = max(0, (int) $request->input('offset', 0));
+            $search  = trim((string) $request->input('search', ''));
+            $filter  = trim((string) $request->input('filter', ''));
+            $alphabet = trim((string) $request->input('alphabet', ''));
             $isVerified = $request->input('is_verified');
             $isTakhmeenUpdated = $request->input('is_takhmeen_updated');
 
@@ -145,6 +148,16 @@ class EstablishmentController extends Controller
             // FILTERS
             if ($filter !== '') {
                 $q = $this->applyFilter($q, $filter, $currentYear, $prevYear);
+            }
+
+            // Alphabet filter: single letter (A–Z) or "Others" for names not starting with a letter
+            if ($alphabet !== '') {
+                if (strtolower($alphabet) === 'others') {
+                    $q->whereRaw('LOWER(LEFT(TRIM(name), 1)) NOT BETWEEN ? AND ?', ['a', 'z']);
+                } else {
+                    $letter = substr($alphabet, 0, 1);
+                    $q->whereRaw('LOWER(LEFT(TRIM(name), 1)) = ?', [strtolower($letter)]);
+                }
             }
 
             $total = (clone $q)->count();
