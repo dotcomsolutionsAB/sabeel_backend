@@ -1130,6 +1130,29 @@ class WhatsAppController extends Controller
                 return $this->error('Establishment not found.', 404);
             }
 
+            $partnerFamilyIds = MumineenEstablishmentModel::where('establishment_id', $establishmentId)
+                ->pluck('family_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            $recentlySent = WhatsAppDueFollowupModel::where('created_at', '>=', now()->subHours(24))
+                ->where(function ($q) use ($establishmentId, $partnerFamilyIds) {
+                    $q->where(function ($q2) use ($establishmentId) {
+                        $q2->where('type', 'establishment')->where('establishment_id', $establishmentId);
+                    });
+                    if (!empty($partnerFamilyIds)) {
+                        $q->orWhere(function ($q2) use ($partnerFamilyIds) {
+                            $q2->where('type', 'family')->whereIn('family_id', $partnerFamilyIds);
+                        });
+                    }
+                })
+                ->exists();
+
+            if ($recentlySent) {
+                return $this->error('A follow up was recently sent. You can send a reminder tomorrow.', 422);
+            }
+
             $dueService = app(DueCalculationService::class);
             $currentYear = $dueService->getCurrentYear();
             $messages = [];
@@ -1167,12 +1190,6 @@ class WhatsAppController extends Controller
             }
 
             // 2) Personal (family) due: for each partner family with due, add message to that family's HOF
-            $partnerFamilyIds = MumineenEstablishmentModel::where('establishment_id', $establishmentId)
-                ->pluck('family_id')
-                ->unique()
-                ->values()
-                ->all();
-
             foreach ($partnerFamilyIds as $familyId) {
                 $familyDue = $dueService->getFamilyDue($familyId, $currentYear);
                 if ($familyDue['due_effective'] <= 0) {
@@ -1465,6 +1482,18 @@ class WhatsAppController extends Controller
                             $failureCount++;
                         }
 
+                        WhatsAppDueFollowupModel::create([
+                            'type' => $msg['type'],
+                            'family_id' => $msg['family_id'] ?? null,
+                            'establishment_id' => $msg['establishment_id'] ?? null,
+                            'phone' => $msg['recipient']['phone'],
+                            'sent_date' => now()->toDateString(),
+                            'template_name' => $templateName,
+                            'status' => $status,
+                            'error_message' => $result['error'] ?? null,
+                            'message_variables' => $msg['variables'],
+                        ]);
+
                         $recipientDetails[] = [
                             'phone' => $msg['recipient']['phone'],
                             'name' => $msg['recipient']['name'],
@@ -1495,6 +1524,17 @@ class WhatsAppController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                         $failureCount++;
+                        WhatsAppDueFollowupModel::create([
+                            'type' => $msg['type'],
+                            'family_id' => $msg['family_id'] ?? null,
+                            'establishment_id' => $msg['establishment_id'] ?? null,
+                            'phone' => $msg['recipient']['phone'],
+                            'sent_date' => now()->toDateString(),
+                            'template_name' => $templateName,
+                            'status' => 'failed',
+                            'error_message' => $e->getMessage(),
+                            'message_variables' => $msg['variables'] ?? [],
+                        ]);
                         $recipientDetails[] = [
                             'phone' => $msg['recipient']['phone'],
                             'name' => $msg['recipient']['name'],
