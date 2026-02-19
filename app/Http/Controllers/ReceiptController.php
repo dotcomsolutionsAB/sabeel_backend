@@ -430,6 +430,68 @@ class ReceiptController extends Controller
     }
 
     /**
+     * List all Advance Paid entries (with name; no status/user_id/timestamps/nested objects).
+     * GET /receipt/advance-paid
+     * Returns: { entries: [...], total_amount: <sum as Advance Paid> }
+     * name = from mumineen (HOF) when family_id set, else from establishment.
+     */
+    public function listAdvancePaid(Request $request)
+    {
+        try {
+            $entries = AdvancePaidModel::query()
+                ->orderBy('date', 'desc')
+                ->orderBy('id', 'desc')
+                ->get();
+
+            $familyIds = $entries->pluck('family_id')->filter()->unique()->values()->all();
+            $establishmentIds = $entries->pluck('establishment_id')->filter()->unique()->values()->all();
+
+            $namesByFamily = [];
+            if (!empty($familyIds)) {
+                $namesByFamily = MumineenModel::whereIn('family_id', $familyIds)
+                    ->where('hof_type', 'HOF')
+                    ->pluck('name', 'family_id')
+                    ->all();
+            }
+            $namesByEstablishment = [];
+            if (!empty($establishmentIds)) {
+                $namesByEstablishment = EstablishmentModel::whereIn('establishment_id', $establishmentIds)
+                    ->pluck('name', 'establishment_id')
+                    ->all();
+            }
+
+            $totalAmount = (float) $entries->sum('amount');
+
+            $data = $entries->map(function ($entry) use ($namesByFamily, $namesByEstablishment) {
+                $name = null;
+                if ($entry->family_id !== null) {
+                    $name = $namesByFamily[$entry->family_id] ?? null;
+                } else {
+                    $name = $namesByEstablishment[$entry->establishment_id ?? 0] ?? null;
+                }
+                return [
+                    'id'                => $entry->id,
+                    'type'              => $entry->type,
+                    'family_id'         => $entry->family_id,
+                    'establishment_id'  => $entry->establishment_id,
+                    'amount'            => $entry->amount,
+                    'mode'              => $entry->mode,
+                    'date'              => $entry->date?->format('Y-m-d'),
+                    'remarks'           => $entry->remarks,
+                    'name'              => $name,
+                ];
+            })->values()->all();
+
+            return $this->success('Advance paid entries fetched', [
+                'entries'            => $data,
+                'total_advance_paid' => round($totalAmount, 2),
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Advance paid list failed');
+        }
+    }
+
+    /**
      * FETCH
      * POST /receipts/retrieve/{id?}
      * Body:
