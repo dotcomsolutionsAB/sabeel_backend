@@ -15,6 +15,7 @@ use App\Models\MumineenEstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use App\Services\DueCalculationService;
 
 class EstablishmentController extends Controller
 {
@@ -501,24 +502,12 @@ class EstablishmentController extends Controller
 
         if (empty($estIds)) return [];
 
-        // Check if verification columns exist (once for all rows)
         $hasIsVerified = Schema::hasColumn('t_establishment', 'is_verified');
         $hasIsTakhmeenUpdated = Schema::hasColumn('t_establishment', 'is_takhmeen_updated');
 
-        // Establishment sabeel entries
-        $es = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
-            ->get()
-            ->groupBy('establishment_id');
+        $dueService = app(DueCalculationService::class);
+        $estDueBulk = $dueService->getEstablishmentDueBulk($estIds, $currentYear);
 
-        // Receipts paid by year for establishments
-        $paid = ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
-            ->whereIn('establishment_id', $estIds)
-            ->where('status','active')
-            ->groupBy('establishment_id','year')
-            ->get()
-            ->groupBy('establishment_id');
-
-        // Partners via links (family_id) => get HOF data from t_mumineen
         $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)
             ->get()
             ->groupBy('establishment_id');
@@ -533,16 +522,11 @@ class EstablishmentController extends Controller
         $out = [];
 
         foreach ($rows as $e) {
-            // Use establishment_id (business key) for lookups
             $estId = (string) $e->establishment_id;
-
-            // Current year sabeel and due
-            $curSabeel = (int) optional($es->get($estId))?->firstWhere('year', $currentYear)?->sabeel ?? 0;
-            $curPaid  = (float) optional($paid->get($estId))?->firstWhere('year', $currentYear)?->paid ?? 0;
-            $curDue  = max(0, $curSabeel - $curPaid);
-
-            // Calculate prev_due as sum of dues for all years before current year
-            $prevDue = $this->establishmentTotalDueForAllPreviousYears([$estId], $currentYear);
+            $eDue = $estDueBulk[$estId] ?? null;
+            $curSabeel = $eDue ? $eDue['sabeel'] : 0;
+            $curDue = $eDue ? $eDue['due_effective'] : 0;
+            $prevDue = $eDue ? $eDue['prev_due_effective'] : 0;
 
             // Build partners list
             $partners = [];

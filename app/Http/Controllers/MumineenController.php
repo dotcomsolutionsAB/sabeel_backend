@@ -20,6 +20,7 @@ use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
 use App\Models\AdvancePaidModel;
+use App\Services\DueCalculationService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -307,37 +308,25 @@ class MumineenController extends Controller
             // 2) Resolve years
             [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
 
-            // 3) FAMILY sabeel + due
-            [$famCurSabeel, $famCurDue]   = $this->familyDueForYear($familyId, $currentYear);
-            
-            // Calculate prev_due as sum of dues for all years before current year
-            $famPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, (string)$currentYear);
+            $dueService = app(DueCalculationService::class);
+            $famDue = $dueService->getFamilyDue($familyId, $currentYear);
 
-            // 4) Build sabeel_details (year-wise)
+            // 4) Build sabeel_details (year-wise, raw; current year due overwritten with effective)
             $sabeelDetails = [];
-            $ms = MumineenSabeelModel::where('family_id', $familyId)
-                ->get()
-                ->keyBy('year');
-
-            $familyPaid = ReceiptModel::select('year', DB::raw('SUM(amount) as paid'))
-                ->where('family_id', $familyId)
-                ->where('status', 'active')
-                ->groupBy('year')
-                ->pluck('paid', 'year');
-
-            foreach ($yearsList as $yr) {
-                $sabeelAmt = (int) (optional($ms->get($yr))->sabeel ?? 0);
-                $paid = (float) ($familyPaid->get($yr) ?? 0);
-                $due = max(0, $sabeelAmt - $paid);
-
+            $yearDueList = $dueService->getFamilyDueByYear($familyId, $yearsList);
+            $currentYearLabel = $this->yearLabel((int)$currentYear);
+            foreach ($yearDueList as $yd) {
+                $dueVal = $yd['due'];
+                if ($yd['year'] === $currentYear) {
+                    $dueVal = $famDue['due_effective'];
+                }
                 $sabeelDetails[] = [
-                    'year'   => $this->yearLabel((int)$yr),
-                    'sabeel' => (string)$sabeelAmt,
-                    'due'    => (string)$due,
+                    'year'   => $this->yearLabel((int)$yd['year']),
+                    'sabeel' => (string) $yd['sabeel'],
+                    'due'    => (string) $dueVal,
                 ];
             }
 
-            // 5) Establishment totals and details
             $estCodes = MumineenEstablishmentModel::where('family_id', $familyId)
                 ->pluck('establishment_id')
                 ->filter()
@@ -345,56 +334,29 @@ class MumineenController extends Controller
                 ->values()
                 ->all();
 
-            // Now calculate totals using business codes (NO conversion to pk)
-            [$estCurSabeel, $estCurDue]   = $this->establishmentTotalsDueForYear($estCodes, $currentYear);
-            [$estPrevSabeel, $estPrevDue] = $this->establishmentTotalsDueForYear($estCodes, $prevYear);
+            $estTotals = $dueService->getEstablishmentTotalsForFamily($estCodes, $currentYear);
+            $estDueBulk = empty($estCodes) ? [] : $dueService->getEstablishmentDueBulk($estCodes, $currentYear);
 
-            // Build establishment_details
             $establishmentDetails = [];
             $links = MumineenEstablishmentModel::with('establishment')
                 ->where('family_id', $familyId)
                 ->get()
                 ->unique('establishment_id');
 
-            if (!empty($estCodes)) {
-                $es = EstablishmentSabeelModel::whereIn('establishment_id', $estCodes)
-                    ->get()
-                    ->groupBy('establishment_id');
-
-                $estPaid = ReceiptModel::select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
-                    ->whereIn('establishment_id', $estCodes)
-                    ->where('status', 'active')
-                    ->groupBy('establishment_id', 'year')
-                    ->get()
-                    ->groupBy('establishment_id');
-
-                foreach ($links as $lnk) {
-                    $estId = (string) $lnk->establishment_id;
-                    $estName = (string) (optional($lnk->establishment)->name ?? '');
-
-                    $estSabeelCur = (int) optional($es->get($estId))
-                        ?->firstWhere('year', $currentYear)
-                        ?->sabeel ?? 0;
-
-                    $estPaidCur = (float) optional($estPaid->get($estId))
-                        ?->firstWhere('year', $currentYear)
-                        ?->paid ?? 0;
-
-                    $estDueCur = max(0, $estSabeelCur - $estPaidCur);
-
-                    $establishmentDetails[] = [
-                        'establishment_id' => $estId,
-                        'name'             => $estName,
-                    'sabeel'           => (string)$estSabeelCur,
-                    'due'              => (string)$estDueCur,
-                    ];
-                }
+            foreach ($links as $lnk) {
+                $estId = (string) $lnk->establishment_id;
+                $estName = (string) (optional($lnk->establishment)->name ?? '');
+                $eDue = $estDueBulk[$estId] ?? null;
+                $estSabeelCur = $eDue ? $eDue['sabeel'] : 0;
+                $estDueCurEffective = $eDue ? $eDue['due_effective'] : 0;
+                $establishmentDetails[] = [
+                    'establishment_id' => $estId,
+                    'name'             => $estName,
+                    'sabeel'           => (string) $estSabeelCur,
+                    'due'              => (string) $estDueCurEffective,
+                ];
             }
 
-            // Calculate prev_due as sum of dues for all years before current year for all establishments
-            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodes, (string)$currentYear);
-
-            // 6) Response payload
             $data = [
                 'id'        => (string) $hof->id,
                 'family_id' => (string) $familyId,
@@ -407,17 +369,17 @@ class MumineenController extends Controller
                 'email'  => (string) ($hof->email ?? ''),
 
                 'sabeel' => [
-                    'sabeel'   => (string) $famCurSabeel,
-                    'due'      => (string) $famCurDue,
-                    'prev_due' => (string) $famPrevDue,
+                    'sabeel'   => (string) $famDue['sabeel'],
+                    'due'      => (string) $famDue['due_effective'],
+                    'prev_due' => (string) $famDue['prev_due_effective'],
                 ],
 
                 'sabeel_details' => $sabeelDetails,
 
                 'establishment' => [
-                    'sabeel'   => (string) $estCurSabeel,
-                    'due'      => (string) $estCurDue,
-                    'prev_due' => (string) $estPrevDueSum,
+                    'sabeel'   => (string) $estTotals['sabeel'],
+                    'due'      => (string) $estTotals['due_effective'],
+                    'prev_due' => (string) $estTotals['prev_due_effective'],
                 ],
 
                 'establishment_details' => $establishmentDetails,
@@ -1082,18 +1044,15 @@ class MumineenController extends Controller
 
         $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
 
-        // Establishment sabeel
+        // Establishment sabeel (for names/display)
         $es = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
             ->get()
             ->groupBy('establishment_id');
 
-        // Establishment receipts paid by year
-        $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_id','year', DB::raw('SUM(amount) as paid'))
-            ->whereIn('establishment_id', $estIds)
-            ->where('status','active')
-            ->groupBy('establishment_id','year')
-            ->get()
-            ->groupBy('establishment_id');
+        // Centralized due calculation (includes advance_paid)
+        $dueService = app(DueCalculationService::class);
+        $familyDueBulk = $dueService->getFamilyDueBulk($familyIds, $currentYear);
+        $estDueBulk = empty($estIds) ? [] : $dueService->getEstablishmentDueBulk($estIds, $currentYear);
 
         $out = [];
 
@@ -1123,45 +1082,44 @@ class MumineenController extends Controller
                 if ($yr === $currentYear) { $curSabeel = $sabeelAmt; $curDue = $due; }
             }
 
-            // Calculate prev_due as sum of dues for all years before current year
-            $prevDue = $this->familyTotalDueForAllPreviousYears((int)$m->family_id, (string)$currentYear);
-
-            // establishment_details
-            $estDetails = [];
-            $estCurSabeelSum = 0; $estCurDueSum = 0; $estPrevDueSum = 0;
+            $famDue = $familyDueBulk[(int)$m->family_id] ?? null;
+            if ($famDue) {
+                $curDueEffective = $famDue['due_effective'];
+                $prevDueEffective = $famDue['prev_due_effective'];
+            } else {
+                $prevDue = $this->familyTotalDueForAllPreviousYears((int)$m->family_id, (string)$currentYear);
+                $curDueEffective = $curDue;
+                $prevDueEffective = $prevDue;
+            }
+            if ($famDue) {
+                foreach ($sabeelDetails as &$sd) {
+                    if (($sd['year'] ?? '') === $this->yearLabel((int)$currentYear)) {
+                        $sd['due'] = (string) $famDue['due_effective'];
+                        break;
+                    }
+                }
+                unset($sd);
+            }
 
             $familyLinks = $links->get($m->family_id) ?? collect();
-
-            // Get all establishment IDs for this family
             $estCodesForFamily = $familyLinks->unique('establishment_id')->pluck('establishment_id')->filter()->unique()->values()->all();
+            $estTotals = $dueService->getEstablishmentTotalsForFamily($estCodesForFamily, $currentYear);
 
+            $estDetails = [];
             foreach ($familyLinks->unique('establishment_id') as $lnk) {
                 $estId = (string) $lnk->establishment_id;
                 $estName = (string) (optional($lnk->establishment)->name ?? '');
-
-                $estSabeelCur = (int) optional($es->get($estId))
-                    ?->firstWhere('year', $currentYear)
-                    ?->sabeel ?? 0;
-
-                $estPaidCur = (float) optional($estPaid->get($estId))
-                    ?->firstWhere('year', $currentYear)
-                    ?->paid ?? 0;
-
-                $estDueCur = max(0, $estSabeelCur - $estPaidCur);
-
-                $estCurSabeelSum += $estSabeelCur;
-                $estCurDueSum += $estDueCur;
+                $eDue = $estDueBulk[$estId] ?? null;
+                $estSabeelCur = $eDue ? $eDue['sabeel'] : (int) optional($es->get($estId))?->firstWhere('year', $currentYear)?->sabeel ?? 0;
+                $estDueCurEffective = $eDue ? $eDue['due_effective'] : 0;
 
                 $estDetails[] = [
                     'establishment_id' => $estId,
                     'name'             => $estName,
-                    'sabeel'           => (string)$estSabeelCur,
-                    'due'              => (string)$estDueCur,
+                    'sabeel'           => (string) $estSabeelCur,
+                    'due'              => (string) $estDueCurEffective,
                 ];
             }
-
-            // Calculate prev_due as sum of dues for all years before current year for all establishments
-            $estPrevDueSum = $this->establishmentTotalDueForAllPreviousYears($estCodesForFamily, (string)$currentYear);
 
             $out[] = [
                 'id'        => (string) $m->id,
@@ -1179,14 +1137,14 @@ class MumineenController extends Controller
 
                 'sabeel' => [
                     'sabeel'   => (string) $curSabeel,
-                    'due'      => (string) $curDue,
-                    'prev_due' => (string) $prevDue,
+                    'due'      => (string) $curDueEffective,
+                    'prev_due' => (string) $prevDueEffective,
                 ],
 
                 'establishment' => [
-                    'sabeel'   => (string) $estCurSabeelSum,
-                    'due'      => (string) $estCurDueSum,
-                    'prev_due' => (string) $estPrevDueSum,
+                    'sabeel'   => (string) $estTotals['sabeel'],
+                    'due'      => (string) $estTotals['due_effective'],
+                    'prev_due' => (string) $estTotals['prev_due_effective'],
                 ],
 
                 'sabeel_details' => $sabeelDetails,
@@ -1324,105 +1282,49 @@ class MumineenController extends Controller
 
             $familyIds = $families->pluck('family_id')->unique()->values()->all();
 
-            // Get all family sabeel data
-            $familySabeel = MumineenSabeelModel::whereIn('family_id', $familyIds)
-                ->get()
-                ->groupBy('family_id');
-
-            // Get all family receipts paid by year
-            $familyPaid = ReceiptModel::select('family_id', 'year', DB::raw('SUM(amount) as paid'))
-                ->whereIn('family_id', $familyIds)
-                ->where('status', 'active')
-                ->groupBy('family_id', 'year')
-                ->get()
-                ->groupBy('family_id');
-
-            // Get establishment links
             $links = MumineenEstablishmentModel::with('establishment')
                 ->whereIn('family_id', $familyIds)
                 ->get()
                 ->groupBy('family_id');
 
-            $estIds = $links->flatten()->pluck('establishment_id')->filter()->unique()->values()->all();
-
-            // Get establishment sabeel
-            $estSabeel = empty($estIds) ? collect() : EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
-                ->get()
-                ->groupBy('establishment_id');
-
-            // Get establishment receipts paid by year
-            $estPaid = empty($estIds) ? collect() : ReceiptModel::select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
-                ->whereIn('establishment_id', $estIds)
-                ->where('status', 'active')
-                ->groupBy('establishment_id', 'year')
-                ->get()
-                ->groupBy('establishment_id');
-
-            // Process families and filter by total due
+            // Process families and filter by total due (due from DueCalculationService includes advance_paid)
             $pdfData = [];
             $serialNumber = 1;
             $totalFamilies = 0;
             $totalEstablishments = 0;
             $skippedFamilies = [];
 
+            $dueService = app(DueCalculationService::class);
+
             foreach ($families as $family) {
                 $familyId = $family->family_id;
+                $famDue = $dueService->getFamilyDue($familyId, $currentYearStr);
+                $familySabeelCur = $famDue['sabeel'];
+                $familyDueCur = $famDue['due_effective'];
+                $familyPrevDue = $famDue['prev_due_effective'];
 
-                // Get sabeel from t_mumineen_sabeel table for current year
-                $sabeelRecord = optional($familySabeel->get($familyId))
-                    ?->firstWhere('year', $currentYearStr);
-                $familySabeelCur = (int) ($sabeelRecord->sabeel ?? 0);
-
-                // Get receipts paid for current year
-                $receiptRecord = optional($familyPaid->get($familyId))
-                    ?->firstWhere('year', $currentYearStr);
-                $familyPaidCur = (float) ($receiptRecord->paid ?? 0);
-
-                $familyDueCur = max(0, $familySabeelCur - $familyPaidCur);
-                $familyPrevDue = $this->familyTotalDueForAllPreviousYears($familyId, $currentYearStr);
-
-                // Get establishments for this family
                 $familyLinks = $links->get($familyId) ?? collect();
-                $estCodesForFamily = $familyLinks->unique('establishment_id')->pluck('establishment_id')->filter()->unique()->values()->all();
-
                 $establishments = [];
                 foreach ($familyLinks->unique('establishment_id') as $lnk) {
                     $estId = (string) $lnk->establishment_id;
                     $estName = (string) (optional($lnk->establishment)->name ?? '');
-
-                    // Calculate establishment hub, due, and prev_due
-                    $estSabeelCur = (int) optional($estSabeel->get($estId))
-                        ?->firstWhere('year', $currentYearStr)
-                        ?->sabeel ?? 0;
-
-                    $estPaidCur = (float) optional($estPaid->get($estId))
-                        ?->firstWhere('year', $currentYearStr)
-                        ?->paid ?? 0;
-
-                    $estDueCur = max(0, $estSabeelCur - $estPaidCur);
-
-                    // Calculate prev_due for this establishment
-                    $estPrevDue = $this->calculateEstablishmentPrevDue($estId, $currentYearStr);
-                    $estTotalDue = $estDueCur + $estPrevDue;
-
-                    // Only include establishments with total due > 0
+                    $eDue = $dueService->getEstablishmentDue($estId, $currentYearStr);
+                    $estTotalDue = $eDue['due_effective'] + $eDue['prev_due_effective'];
                     if ($estTotalDue > 0) {
                         $establishments[] = [
                             'name' => $estName,
-                            'hub' => $estSabeelCur,
-                            'due' => $estDueCur,
-                            'prev_due' => $estPrevDue,
+                            'hub' => $eDue['sabeel'],
+                            'due' => $eDue['due_effective'],
+                            'prev_due' => $eDue['prev_due_effective'],
                         ];
                         $totalEstablishments++;
                     }
                 }
 
-                // Skip families only if both family due == 0 AND no establishments with due > 0
                 if ($familyDueCur == 0 && empty($establishments)) {
                     continue;
                 }
 
-                // Add remark if is_takhmeen_updated is false/0
                 $remark = '';
                 if (Schema::hasColumn('t_mumineen', 'is_takhmeen_updated')) {
                     $isTakhmeenUpdated = $family->is_takhmeen_updated ?? false;
@@ -1507,28 +1409,4 @@ class MumineenController extends Controller
         }
     }
 
-    /**
-     * Calculate establishment previous years due (single establishment)
-     */
-    private function calculateEstablishmentPrevDue(string $establishmentId, string $currentYear): float
-    {
-        $sabeelEntries = EstablishmentSabeelModel::where('establishment_id', $establishmentId)
-            ->where('year', '<', $currentYear)
-            ->get();
-
-        $totalPrevDue = 0;
-
-        foreach ($sabeelEntries as $entry) {
-            $year = $entry->year;
-            $sabeel = (float) $entry->sabeel;
-            $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
-                ->where('year', $year)
-                ->where('status', 'active')
-                ->sum('amount') ?? 0;
-            $due = max(0, $sabeel - $paid);
-            $totalPrevDue += $due;
-        }
-
-        return $totalPrevDue;
-    }
 }

@@ -16,6 +16,7 @@ use App\Models\MumineenSabeelModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\AdvancePaidModel;
 use App\Models\WhatsAppDueFollowupModel;
+use App\Services\DueCalculationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
@@ -1122,10 +1123,11 @@ class WhatsAppController extends Controller
     }
 
     /**
-     * Get families with due amounts
+     * Get families with due amounts (uses DueCalculationService; due/prev_due are effective)
      */
     private function getFamiliesWithDue(string $currentYear)
     {
+        $dueService = app(DueCalculationService::class);
         $activeHofs = MumineenModel::where('hof_type', 'HOF')
             ->where('status', 'active')
             ->where('notification', true)
@@ -1134,151 +1136,52 @@ class WhatsAppController extends Controller
         $familiesWithDue = collect();
 
         foreach ($activeHofs as $hof) {
-            $dueData = $this->calculateFamilyDue($hof->family_id, $currentYear);
-            
-            if ($dueData['due'] > 0) {
-                $dueData['name'] = $hof->name;
-                $dueData['its'] = $hof->its;
-                $dueData['sector'] = $hof->sector;
-                $dueData['family_id'] = $hof->family_id;
-                $familiesWithDue->push((object) $dueData);
+            $d = $dueService->getFamilyDue($hof->family_id, $currentYear);
+            if ($d['due_effective'] <= 0) {
+                continue;
             }
+            $familiesWithDue->push((object) [
+                'name' => $hof->name,
+                'its' => $hof->its,
+                'sector' => $hof->sector,
+                'family_id' => $hof->family_id,
+                'sabeel' => $d['sabeel'],
+                'paid' => $d['paid'],
+                'due' => $d['due_effective'],
+                'prev_due' => $d['prev_due_effective'],
+            ]);
         }
 
         return $familiesWithDue;
     }
 
     /**
-     * Get establishments with due amounts
+     * Get establishments with due amounts (uses DueCalculationService; due/prev_due are effective)
      */
     private function getEstablishmentsWithDue(string $currentYear)
     {
+        $dueService = app(DueCalculationService::class);
         $establishments = EstablishmentModel::where('status', 'active')
             ->where('notification', true)
             ->get();
         $establishmentsWithDue = collect();
 
         foreach ($establishments as $est) {
-            $dueData = $this->calculateEstablishmentDue($est->establishment_id, $currentYear);
-            
-            if ($dueData['due'] > 0) {
-                $dueData['name'] = $est->name;
-                $dueData['establishment_id'] = $est->establishment_id;
-                $establishmentsWithDue->push((object) $dueData);
+            $d = $dueService->getEstablishmentDue($est->establishment_id, $currentYear);
+            if ($d['due_effective'] <= 0) {
+                continue;
             }
+            $establishmentsWithDue->push((object) [
+                'name' => $est->name,
+                'establishment_id' => $est->establishment_id,
+                'sabeel' => $d['sabeel'],
+                'paid' => $d['paid'],
+                'due' => $d['due_effective'],
+                'prev_due' => $d['prev_due_effective'],
+            ]);
         }
 
         return $establishmentsWithDue;
-    }
-
-    /**
-     * Calculate family due amounts
-     */
-    private function calculateFamilyDue(int $familyId, string $currentYear): array
-    {
-        // Current year sabeel
-        $sabeel = (float) MumineenSabeelModel::where('family_id', $familyId)
-            ->where('year', $currentYear)
-            ->value('sabeel') ?? 0;
-
-        // Current year paid (receipts only, year-wise)
-        $paid = (float) ReceiptModel::where('family_id', $familyId)
-            ->where('year', $currentYear)
-            ->where('status', 'active')
-            ->sum('amount') ?? 0;
-
-        // Current year due
-        $due = max(0, $sabeel - $paid);
-
-        // Previous years due
-        $prevDue = $this->calculateFamilyPrevDue($familyId, $currentYear);
-
-        return [
-            'sabeel' => $sabeel,
-            'paid' => $paid,
-            'due' => $due,
-            'prev_due' => $prevDue,
-        ];
-    }
-
-    /**
-     * Calculate establishment due amounts
-     */
-    private function calculateEstablishmentDue(int $establishmentId, string $currentYear): array
-    {
-        // Current year sabeel
-        $sabeel = (float) EstablishmentSabeelModel::where('establishment_id', $establishmentId)
-            ->where('year', $currentYear)
-            ->value('sabeel') ?? 0;
-
-        // Current year paid (receipts only, year-wise)
-        $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
-            ->where('year', $currentYear)
-            ->where('status', 'active')
-            ->sum('amount') ?? 0;
-
-        // Current year due
-        $due = max(0, $sabeel - $paid);
-
-        // Previous years due
-        $prevDue = $this->calculateEstablishmentPrevDue($establishmentId, $currentYear);
-
-        return [
-            'sabeel' => $sabeel,
-            'paid' => $paid,
-            'due' => $due,
-            'prev_due' => $prevDue,
-        ];
-    }
-
-    /**
-     * Calculate family previous years due
-     */
-    private function calculateFamilyPrevDue(int $familyId, string $currentYear): float
-    {
-        $sabeelEntries = MumineenSabeelModel::where('family_id', $familyId)
-            ->where('year', '<', $currentYear)
-            ->get();
-
-        $totalPrevDue = 0;
-
-        foreach ($sabeelEntries as $entry) {
-            $year = $entry->year;
-            $sabeel = (float) $entry->sabeel;
-            $paid = (float) ReceiptModel::where('family_id', $familyId)
-                ->where('year', $year)
-                ->where('status', 'active')
-                ->sum('amount') ?? 0;
-            $due = max(0, $sabeel - $paid);
-            $totalPrevDue += $due;
-        }
-
-        return $totalPrevDue;
-    }
-
-    /**
-     * Calculate establishment previous years due
-     */
-    private function calculateEstablishmentPrevDue(int $establishmentId, string $currentYear): float
-    {
-        $sabeelEntries = EstablishmentSabeelModel::where('establishment_id', $establishmentId)
-            ->where('year', '<', $currentYear)
-            ->get();
-
-        $totalPrevDue = 0;
-
-        foreach ($sabeelEntries as $entry) {
-            $year = $entry->year;
-            $sabeel = (float) $entry->sabeel;
-            $paid = (float) ReceiptModel::where('establishment_id', $establishmentId)
-                ->where('year', $year)
-                ->where('status', 'active')
-                ->sum('amount') ?? 0;
-            $due = max(0, $sabeel - $paid);
-            $totalPrevDue += $due;
-        }
-
-        return $totalPrevDue;
     }
 
     /**

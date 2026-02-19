@@ -25,6 +25,7 @@ use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\AdvancePaidModel;
 use App\Http\Controllers\WhatsAppController;
+use App\Services\DueCalculationService;
 use Mpdf\Mpdf;
 
 class ReceiptController extends Controller
@@ -102,7 +103,10 @@ class ReceiptController extends Controller
             }
 
             // Calculate total due (including advance_paid)
-            $totalDue = $this->calculateTotalDue($type, $familyId, $establishmentId);
+            $dueService = app(DueCalculationService::class);
+            $totalDue = $type === 'family'
+                ? $dueService->getFamilyTotalDue($familyId)
+                : $dueService->getEstablishmentTotalDue($establishmentId);
             
             if ($amount > $totalDue) {
                 DB::rollBack();
@@ -253,7 +257,10 @@ class ReceiptController extends Controller
                     $date = $entry->date->toDateString();
 
                     // Calculate current due (including advance_paid)
-                    $totalDue = $this->calculateTotalDue($type, $familyId, $establishmentId);
+                    $dueService = app(DueCalculationService::class);
+                    $totalDue = $type === 'family'
+                        ? $dueService->getFamilyTotalDue($familyId)
+                        : $dueService->getEstablishmentTotalDue($establishmentId);
 
                     if ($amount > $totalDue) {
                         // Amount exceeds due, mark as failed
@@ -1058,50 +1065,6 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /* ==================== Helper Methods ==================== */
-
-    /**
-     * Calculate total due across all years (including advance_paid)
-     */
-    private function calculateTotalDue(string $type, ?int $familyId, ?int $establishmentId): float
-    {
-        $totalDue = 0;
-
-        if ($type === 'family') {
-            // Get total sabeel
-            $totalSabeel = MumineenSabeelModel::where('family_id', $familyId)->sum('sabeel');
-            
-            // Get total receipts
-            $totalReceipts = ReceiptModel::where('family_id', $familyId)
-                ->where('status', 'active')
-                ->sum('amount');
-
-            // Get total advance_paid (pending only)
-            $totalAdvancePaid = AdvancePaidModel::where('family_id', $familyId)
-                ->where('type', 'family')
-                ->where('status', 'pending')
-                ->sum('amount');
-
-            $totalDue = max(0, (float) $totalSabeel - (float) $totalReceipts - (float) $totalAdvancePaid);
-        } else {
-            // Get total sabeel
-            $totalSabeel = EstablishmentSabeelModel::where('establishment_id', $establishmentId)->sum('sabeel');
-            
-            // Get total receipts
-            $totalReceipts = ReceiptModel::where('establishment_id', $establishmentId)
-                ->where('status', 'active')
-                ->sum('amount');
-
-            // Get total advance_paid (pending only)
-            $totalAdvancePaid = AdvancePaidModel::where('establishment_id', $establishmentId)
-                ->where('type', 'establishment')
-                ->where('status', 'pending')
-                ->sum('amount');
-
-            $totalDue = max(0, (float) $totalSabeel - (float) $totalReceipts - (float) $totalAdvancePaid);
-        }
-
-        return $totalDue;
-    }
 
     /**
      * Get total amount for a person on a specific date (CASH + ACTIVE receipts only)

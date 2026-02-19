@@ -12,6 +12,7 @@ use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use App\Services\DueCalculationService;
 
 // ... same imports
 
@@ -207,8 +208,7 @@ class EstablishmentSabeelController extends Controller
     }
 
     /**
-     * Build establishment sabeel summary payload
-     * Uses PRIMARY KEY id internally
+     * Build establishment sabeel summary payload (due includes advance_paid via service)
      */
     private function buildEstablishmentSummaryPayload(int $establishment_id): array
     {
@@ -216,19 +216,25 @@ class EstablishmentSabeelController extends Controller
             ->orderBy('year', 'desc')
             ->get();
 
-        $details = $rows->map(function ($r) use ($establishment_id) {
+        $yearsList = $rows->pluck('year')->sort()->values()->all();
+        $dueService = app(DueCalculationService::class);
+        $yearDueList = $dueService->getEstablishmentDueByYear($establishment_id, $yearsList);
+        $currentYear = $dueService->getCurrentYear();
 
-            $paid = $this->paidForYear($establishment_id, (int)$r->year);
-            $due  = max(0, (int)$r->sabeel - $paid);
-
-            return [
-                'year'   => $this->formatFinancialYear((int)$r->year),
-                'sabeel' => (string) $r->sabeel,
-                'due'    => (string) $due,
+        $details = [];
+        foreach ($yearDueList as $yd) {
+            $dueVal = $yd['due'];
+            if ($yd['year'] === $currentYear) {
+                $estDue = $dueService->getEstablishmentDue($establishment_id, $currentYear);
+                $dueVal = $estDue['due_effective'];
+            }
+            $details[] = [
+                'year'   => $this->formatFinancialYear((int)$yd['year']),
+                'sabeel' => (string) $yd['sabeel'],
+                'due'    => (string) $dueVal,
             ];
-        })->values();
+        }
 
-        // 👇 THIS SHAPE IS THE KEY
         return [
             'sabeel_details' => $details,
         ];

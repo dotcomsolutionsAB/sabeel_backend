@@ -15,6 +15,7 @@ use App\Models\MumineenEstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
+use App\Services\DueCalculationService;
 
 class MumineenSabeelController extends Controller
 {
@@ -89,9 +90,18 @@ class MumineenSabeelController extends Controller
                 if (!$entry) return $this->error('Sabeel entry not found for this family.', 404);
             }
 
-            // build details only
-            [, , $yearsList] = $this->resolveYears();
+            [$currentYear, , $yearsList] = $this->resolveYears();
             $sabeelDetails = $this->buildFamilySabeelDetails((int)$family_id, $yearsList);
+            $dueService = app(DueCalculationService::class);
+            $famDue = $dueService->getFamilyDue((int)$family_id, (string)$currentYear);
+            $currentYearLabel = $this->yearLabel((int)$currentYear);
+            foreach ($sabeelDetails as &$sd) {
+                if (($sd['year'] ?? '') === $currentYearLabel) {
+                    $sd['due'] = (string) $famDue['due_effective'];
+                    break;
+                }
+            }
+            unset($sd);
 
             $payload = [
                 [
@@ -427,20 +437,33 @@ class MumineenSabeelController extends Controller
         $hof = $this->getHofByFamilyId($family_id);
 
         [$currentYear, $prevYear, $yearsList] = $this->resolveYears();
+        $currentYearStr = (string) $currentYear;
 
-        [$curSabeel, $curDue] = $this->familyDueForYear($family_id, $currentYear);
+        $dueService = app(DueCalculationService::class);
+        $famDue = $dueService->getFamilyDue($family_id, $currentYearStr);
 
-        // Calculate prev_due as sum of dues for all years before current year
-        $prevDue = $this->familyTotalDueForAllPreviousYears($family_id, (string)$currentYear);
+        $estIds = MumineenEstablishmentModel::where('family_id', $family_id)
+            ->pluck('establishment_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $estTotals = $dueService->getEstablishmentTotalsForFamily($estIds, $currentYearStr);
 
-        [$estSabeel, $estDue, $estPrevDue] = $this->establishmentSummaryForFamily($family_id, $currentYear);
-
-        $sabeelDetails = $this->buildFamilySabeelDetails($family_id, $yearsList);
+        $yearDueList = $dueService->getFamilyDueByYear($family_id, $yearsList);
+        $sabeelDetails = [];
+        foreach ($yearDueList as $yd) {
+            $dueVal = $yd['year'] === $currentYearStr ? $famDue['due_effective'] : $yd['due'];
+            $sabeelDetails[] = [
+                'year'   => $this->yearLabel((int)$yd['year']),
+                'sabeel' => (string) $yd['sabeel'],
+                'due'    => (string) $dueVal,
+            ];
+        }
 
         return [
             'id'        => (string) ($hof->id ?? ''),
             'family_id' => (string) $family_id,
-            // 'url'       => "https://talabulilm.com/mumin_images/{$hof->its}.png",
             'url'       => $hof->pic,
 
             'name'      => (string) ($hof->name ?? ''),
@@ -450,36 +473,33 @@ class MumineenSabeelController extends Controller
             'email'     => (string) ($hof->email ?? ''),
 
             'sabeel' => [
-                'sabeel'   => (string) $curSabeel,
-                'due'      => (string) $curDue,
-                'prev_due' => (string) $prevDue,
+                'sabeel'   => (string) $famDue['sabeel'],
+                'due'      => (string) $famDue['due_effective'],
+                'prev_due' => (string) $famDue['prev_due_effective'],
             ],
 
-            // ✅ NEW: year wise list
             'sabeel_details' => $sabeelDetails,
 
             'establishment' => [
-                'sabeel'   => (string) $estSabeel,
-                'due'      => (string) $estDue,
-                'prev_due' => (string) $estPrevDue,
+                'sabeel'   => (string) $estTotals['sabeel'],
+                'due'      => (string) $estTotals['due_effective'],
+                'prev_due' => (string) $estTotals['prev_due_effective'],
             ],
         ];
     }
 
     private function buildFamilySabeelDetails(int $family_id, array $yearsList): array
     {
+        $dueService = app(DueCalculationService::class);
+        $yearDueList = $dueService->getFamilyDueByYear($family_id, $yearsList);
         $details = [];
-
-        foreach ($yearsList as $yr) {
-            [$sabeel, $due] = $this->familyDueForYear($family_id, (int)$yr);
-
+        foreach ($yearDueList as $yd) {
             $details[] = [
-                'year'   => $this->yearLabel((int)$yr),
-                'sabeel' => (string) $sabeel,
-                'due'    => (string) $due,
+                'year'   => $this->yearLabel((int)$yd['year']),
+                'sabeel' => (string) $yd['sabeel'],
+                'due'    => (string) $yd['due'],
             ];
         }
-
         return $details;
     }
 }

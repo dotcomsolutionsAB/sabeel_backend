@@ -20,6 +20,7 @@ use App\Models\MumineenEstablishmentModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
 use App\Models\AdvancePaidModel;
+use App\Services\DueCalculationService;
 use Illuminate\Database\Eloquent\Builder;
 
 class DashboardController extends Controller
@@ -237,13 +238,11 @@ class DashboardController extends Controller
                 'type' => 'required|in:sabeel,establishment',
             ]);
 
+            $dueService = app(DueCalculationService::class);
+            $currentYearStr = $dueService->getCurrentYear();
             $yearDueMap = [];
 
             if ($request->type === 'sabeel') {
-                /* ============================================================
-                FAMILY DUE CALCULATION
-                ============================================================ */
-                // Base: all active HOF
                 $hofs = MumineenModel::query()
                     ->where('hof_type', 'HOF')
                     ->where('status', 'active')
@@ -253,14 +252,12 @@ class DashboardController extends Controller
                 $familyIds = $hofs->pluck('family_id')->unique()->all();
 
                 if (!empty($familyIds)) {
-                    // Get all sabeel data grouped by family_id and year
                     $sabeelData = DB::table('t_mumineen_sabeel')
                         ->whereIn('family_id', $familyIds)
                         ->select('family_id', 'year', 'sabeel')
                         ->get()
                         ->groupBy('family_id');
 
-                    // Get all paid data grouped by family_id and year
                     $paidData = DB::table('t_receipts')
                         ->whereIn('family_id', $familyIds)
                         ->where('status', 'active')
@@ -269,22 +266,22 @@ class DashboardController extends Controller
                         ->get()
                         ->groupBy('family_id');
 
-                    // Calculate due per year for families
+                    $familyDueBulk = $dueService->getFamilyDueBulk($familyIds, $currentYearStr);
+
                     foreach ($familyIds as $familyId) {
                         $familySabeels = $sabeelData->get($familyId, collect());
                         $familyPaids = $paidData->get($familyId, collect());
-
-                        // Get all unique years for this family
                         $years = $familySabeels->pluck('year')->merge($familyPaids->pluck('year'))->unique()->sort();
 
                         foreach ($years as $yr) {
                             $sabeelEntry = $familySabeels->firstWhere('year', $yr);
                             $paidEntry = $familyPaids->firstWhere('year', $yr);
-
                             $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
                             $paid   = (float) ($paidEntry->paid ?? 0);
-                            $due    = max(0, $sabeel - $paid);
-
+                            $due = max(0, $sabeel - $paid);
+                            if ($yr === $currentYearStr && isset($familyDueBulk[$familyId])) {
+                                $due = $familyDueBulk[$familyId]['due_effective'];
+                            }
                             if (!isset($yearDueMap[$yr])) {
                                 $yearDueMap[$yr] = 0;
                             }
@@ -293,10 +290,6 @@ class DashboardController extends Controller
                     }
                 }
             } else {
-                /* ============================================================
-                ESTABLISHMENT DUE CALCULATION
-                ============================================================ */
-                // Base establishment query
                 $establishments = EstablishmentModel::query()
                     ->select('establishment_id')
                     ->get();
@@ -304,13 +297,11 @@ class DashboardController extends Controller
                 $estIds = $establishments->pluck('establishment_id')->all();
 
                 if (!empty($estIds)) {
-                    // Get all sabeel data grouped by establishment_id and year
                     $sabeelData = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
                         ->select('establishment_id', 'year', 'sabeel')
                         ->get()
                         ->groupBy('establishment_id');
 
-                    // Get all paid data grouped by establishment_id and year
                     $paidData = DB::table('t_receipts')
                         ->whereIn('establishment_id', $estIds)
                         ->where('status', 'active')
@@ -319,22 +310,22 @@ class DashboardController extends Controller
                         ->get()
                         ->groupBy('establishment_id');
 
-                    // Calculate due per year for establishments
+                    $estDueBulk = $dueService->getEstablishmentDueBulk($estIds, $currentYearStr);
+
                     foreach ($estIds as $estId) {
                         $estSabeels = $sabeelData->get($estId, collect());
                         $estPaids = $paidData->get($estId, collect());
-
-                        // Get all unique years for this establishment
                         $years = $estSabeels->pluck('year')->merge($estPaids->pluck('year'))->unique()->sort();
 
                         foreach ($years as $yr) {
                             $sabeelEntry = $estSabeels->firstWhere('year', $yr);
                             $paidEntry = $estPaids->firstWhere('year', $yr);
-
                             $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
                             $paid   = (float) ($paidEntry->paid ?? 0);
-                            $due    = max(0, $sabeel - $paid);
-
+                            $due = max(0, $sabeel - $paid);
+                            if ($yr === $currentYearStr && isset($estDueBulk[$estId])) {
+                                $due = $estDueBulk[$estId]['due_effective'];
+                            }
                             if (!isset($yearDueMap[$yr])) {
                                 $yearDueMap[$yr] = 0;
                             }
@@ -428,6 +419,8 @@ class DashboardController extends Controller
                 }
 
                 $familyIds = $rows->pluck('family_id')->unique()->all();
+                $dueService = app(DueCalculationService::class);
+                $familyDueBulk = $dueService->getFamilyDueBulk($familyIds, $currentYearStr);
 
                 $excelRows = [];
                 $sn = 1;
@@ -436,7 +429,6 @@ class DashboardController extends Controller
                 $totalDue    = 0;
 
                 if ($useSpecificYear) {
-                    // Single year export
                     $sabeelMap = DB::table('t_mumineen_sabeel')
                         ->whereIn('family_id', $familyIds)
                         ->where('year', $targetYear)
@@ -450,12 +442,14 @@ class DashboardController extends Controller
                         ->select('family_id', DB::raw('SUM(amount) as paid'))
                         ->pluck('paid', 'family_id');
 
-                foreach ($rows as $m) {
-                    $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
-                    $paid   = (float) ($paidMap[$m->family_id] ?? 0);
-                    $due    = max(0, $sabeel - $paid);
+                    $dueBulkForYear = $dueService->getFamilyDueBulk($familyIds, $targetYear);
 
-                        // If filter is due_family, only export rows with due > 0
+                    foreach ($rows as $m) {
+                        $sabeel = (float) ($sabeelMap[$m->family_id] ?? 0);
+                        $paid   = (float) ($paidMap[$m->family_id] ?? 0);
+                        $famDue = $dueBulkForYear[(int)$m->family_id] ?? null;
+                        $due    = $famDue ? $famDue['due_effective'] : max(0, $sabeel - $paid);
+
                         if ($filter === 'due_family' && $due <= 0) {
                             continue;
                         }
@@ -507,28 +501,33 @@ class DashboardController extends Controller
                             $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
                             $paid   = (float) ($paidEntry->paid ?? 0);
                             $due    = max(0, $sabeel - $paid);
+                            if ($yr === $currentYearStr) {
+                                $famDue = $familyDueBulk[(int)$m->family_id] ?? null;
+                                if ($famDue) {
+                                    $due = $famDue['due_effective'];
+                                }
+                            }
 
-                            // If filter is due_family, only export rows with due > 0
                             if ($filter === 'due_family' && $due <= 0) {
                                 continue;
                             }
 
-                    $totalSabeel += $sabeel;
-                    $totalPaid   += $paid;
-                    $totalDue    += $due;
+                            $totalSabeel += $sabeel;
+                            $totalPaid   += $paid;
+                            $totalDue    += $due;
 
-                    $excelRows[] = [
-                        $sn++,
-                        $m->its,
-                        $m->name,
-                        $m->mobile ?? '-',
-                        $m->email ?? '-',
-                        $m->sector ?? '-',
+                            $excelRows[] = [
+                                $sn++,
+                                $m->its,
+                                $m->name,
+                                $m->mobile ?? '-',
+                                $m->email ?? '-',
+                                $m->sector ?? '-',
                                 $yr,
-                        $sabeel,
-                        $paid,
-                        $due,
-                    ];
+                                $sabeel,
+                                $paid,
+                                $due,
+                            ];
                         }
                     }
                 }
@@ -653,6 +652,8 @@ class DashboardController extends Controller
             }
 
             $estIds = $rows->pluck('establishment_id')->all();
+            $dueServiceEst = app(DueCalculationService::class);
+            $estDueBulk = $dueServiceEst->getEstablishmentDueBulk($estIds, $currentYearStr);
 
             // Partner links
             $links = MumineenEstablishmentModel::whereIn('establishment_id', $estIds)->get();
@@ -676,7 +677,6 @@ class DashboardController extends Controller
             $totalDue    = 0;
 
             if ($useSpecificYear) {
-                // Single year export
                 $sabeelMap = EstablishmentSabeelModel::whereIn('establishment_id', $estIds)
                     ->where('year', $targetYear)
                     ->pluck('sabeel', 'establishment_id');
@@ -689,24 +689,26 @@ class DashboardController extends Controller
                     ->select('establishment_id', DB::raw('SUM(amount) as paid'))
                     ->pluck('paid', 'establishment_id');
 
-            foreach ($rows as $e) {
-                $sabeel = (float) ($sabeelMap[$e->establishment_id] ?? 0);
-                $paid   = (float) ($paidMap[$e->establishment_id] ?? 0);
-                $due    = max(0, $sabeel - $paid);
+                $estDueBulkForYear = $dueServiceEst->getEstablishmentDueBulk($estIds, $targetYear);
 
-                $totalSabeel += $sabeel;
-                $totalPaid   += $paid;
-                $totalDue    += $due;
+                foreach ($rows as $e) {
+                    $eid = $e->establishment_id;
+                    $sabeel = (float) ($sabeelMap[$eid] ?? 0);
+                    $paid   = (float) ($paidMap[$eid] ?? 0);
+                    $eDue = $estDueBulkForYear[$eid] ?? null;
+                    $due = $eDue ? $eDue['due_effective'] : max(0, $sabeel - $paid);
 
-                $excelRows[] = [
-                    $sn++,
-                    $e->name,
-                    '-',
-                    '-',
-                    $e->address ?? '-',
-                    isset($partnersByEst[$e->establishment_id])
-                        ? implode(', ', $partnersByEst[$e->establishment_id])
-                        : '-',
+                    $totalSabeel += $sabeel;
+                    $totalPaid   += $paid;
+                    $totalDue    += $due;
+
+                    $excelRows[] = [
+                        $sn++,
+                        $e->name,
+                        '-',
+                        '-',
+                        $e->address ?? '-',
+                        isset($partnersByEst[$eid]) ? implode(', ', $partnersByEst[$eid]) : '-',
                         $targetYear,
                         $sabeel,
                         $paid,
@@ -742,6 +744,12 @@ class DashboardController extends Controller
                         $sabeel = (float) ($sabeelEntry->sabeel ?? 0);
                         $paid   = (float) ($paidEntry->paid ?? 0);
                         $due    = max(0, $sabeel - $paid);
+                        if ($yr === $currentYearStr) {
+                            $eDue = $estDueBulk[$e->establishment_id] ?? null;
+                            if ($eDue) {
+                                $due = $eDue['due_effective'];
+                            }
+                        }
 
                         $totalSabeel += $sabeel;
                         $totalPaid   += $paid;
@@ -757,10 +765,10 @@ class DashboardController extends Controller
                                 ? implode(', ', $partnersByEst[$e->establishment_id])
                                 : '-',
                             $yr,
-                    $sabeel,
-                    $paid,
-                    $due,
-                ];
+                            $sabeel,
+                            $paid,
+                            $due,
+                        ];
                     }
                 }
             }
