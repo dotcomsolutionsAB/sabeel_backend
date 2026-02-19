@@ -159,6 +159,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
     // whatsapp route
     Route::prefix('whatsapp')->group(function () {
         Route::post('/due-followup', [WhatsAppController::class, 'sendDueFollowup']);
+        Route::post('/due-followup-establishment', [WhatsAppController::class, 'sendDueFollowupForEstablishment']);
     });
 });
 

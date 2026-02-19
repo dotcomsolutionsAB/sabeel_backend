@@ -1111,6 +1111,143 @@ class WhatsAppController extends Controller
     }
 
     /**
+     * Queue and send due follow-up for a single establishment.
+     * Sends: (1) establishment due message to partners, (2) personal (family) due message for each partner family with due.
+     * POST /whatsapp/due-followup-establishment
+     * Body: { "establishment_id": 123 }
+     * If TEST_MODE=true, all messages are sent to config whatsapp.test_mode_phone (default 918961043773).
+     */
+    public function sendDueFollowupForEstablishment(Request $request)
+    {
+        try {
+            $request->validate([
+                'establishment_id' => 'required|integer',
+            ]);
+            $establishmentId = (int) $request->establishment_id;
+
+            $establishment = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+            if (!$establishment) {
+                return $this->error('Establishment not found.', 404);
+            }
+
+            $dueService = app(DueCalculationService::class);
+            $currentYear = $dueService->getCurrentYear();
+            $messages = [];
+
+            // 1) Establishment due: if has due, add messages to all partners
+            $estDue = $dueService->getEstablishmentDue($establishmentId, $currentYear);
+            if ($estDue['due_effective'] > 0) {
+                $estPayload = (object) [
+                    'name' => $establishment->name,
+                    'establishment_id' => $establishmentId,
+                    'sabeel' => $estDue['sabeel'],
+                    'paid' => $estDue['paid'],
+                    'due' => $estDue['due_effective'],
+                    'prev_due' => $estDue['prev_due_effective'],
+                ];
+                $recipients = $this->getEstablishmentRecipients($establishmentId);
+                $template = ($estPayload->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                foreach ($recipients as $recipient) {
+                    $variables = $this->formatDueMessageVariables(
+                        $estPayload,
+                        'establishment',
+                        null,
+                        $establishmentId,
+                        $recipient,
+                        $template
+                    );
+                    $messages[] = [
+                        'type' => 'establishment',
+                        'establishment_id' => $establishmentId,
+                        'template' => $template,
+                        'recipient' => $recipient,
+                        'variables' => $variables,
+                    ];
+                }
+            }
+
+            // 2) Personal (family) due: for each partner family with due, add message to that family's HOF
+            $partnerFamilyIds = MumineenEstablishmentModel::where('establishment_id', $establishmentId)
+                ->pluck('family_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            foreach ($partnerFamilyIds as $familyId) {
+                $familyDue = $dueService->getFamilyDue($familyId, $currentYear);
+                if ($familyDue['due_effective'] <= 0) {
+                    continue;
+                }
+                $hof = MumineenModel::where('family_id', $familyId)
+                    ->where('hof_type', 'HOF')
+                    ->where('status', 'active')
+                    ->first();
+                if (!$hof) {
+                    continue;
+                }
+                $familyPayload = (object) [
+                    'name' => $hof->name,
+                    'its' => $hof->its,
+                    'family_id' => $familyId,
+                    'sabeel' => $familyDue['sabeel'],
+                    'paid' => $familyDue['paid'],
+                    'due' => $familyDue['due_effective'],
+                    'prev_due' => $familyDue['prev_due_effective'],
+                ];
+                $recipients = $this->getFamilyRecipients($familyId);
+                $template = ($familyPayload->prev_due ?? 0) > 0 ? 'sabeel_overdue' : 'sabeel_due';
+                foreach ($recipients as $recipient) {
+                    $variables = $this->formatDueMessageVariables(
+                        $familyPayload,
+                        'family',
+                        $familyId,
+                        null,
+                        $recipient,
+                        $template
+                    );
+                    $messages[] = [
+                        'type' => 'family',
+                        'family_id' => $familyId,
+                        'template' => $template,
+                        'recipient' => $recipient,
+                        'variables' => $variables,
+                    ];
+                }
+            }
+
+            if (empty($messages)) {
+                return $this->error('No due for the selected establishment.', 422);
+            }
+
+            // TEST_MODE: send all messages to test phone
+            if (config('whatsapp.test_mode', false)) {
+                $testPhone = config('whatsapp.test_mode_phone', '918961043773');
+                foreach ($messages as &$msg) {
+                    $msg['recipient']['phone'] = $testPhone;
+                }
+                unset($msg);
+            }
+
+            $results = $this->sendDueFollowupMessages($messages, 'live');
+
+            return $this->success('Due follow-up sent for establishment', [
+                'establishment_id' => $establishmentId,
+                'messages_queued' => count($messages),
+                'results' => $results,
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Due follow-up for establishment failed', [
+                'establishment_id' => $request->input('establishment_id'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->serverError($e, 'Due follow-up for establishment failed');
+        }
+    }
+
+    /**
      * Get current year from database
      */
     private function getCurrentYear(): string
