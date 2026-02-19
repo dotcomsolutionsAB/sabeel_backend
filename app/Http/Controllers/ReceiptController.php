@@ -135,6 +135,10 @@ class ReceiptController extends Controller
                     $receiptsCreatedInTransaction = $result['receipts_created'];
                     $createdReceipts = array_merge($createdReceipts, $result['receipts']);
                     $remainingAmount -= $result['amount_used'];
+                    // Establishment + cash: only one receipt per day (max 10k); rest goes to advance_paid
+                    if ($type === 'establishment' && !empty($result['receipts'])) {
+                        break;
+                    }
                 } else {
                     // Non-cash mode
                     $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, min($remainingAmount, $due), $request, $date, $receiptsCreatedInTransaction);
@@ -223,9 +227,14 @@ class ReceiptController extends Controller
             // Get date (default to yesterday)
             $processDate = $request->input('date', now()->subDay()->toDateString());
 
-            // Get pending entries for the specified date
+            // Get pending entries: for this date, plus pending establishment+cash (any date) for one-receipt-per-run
             $entries = AdvancePaidModel::where('status', 'pending')
-                ->whereDate('date', $processDate)
+                ->where(function ($q) use ($processDate) {
+                    $q->whereDate('date', $processDate)
+                        ->orWhere(function ($q2) {
+                            $q2->where('type', 'establishment')->where('mode', 'cash');
+                        });
+                })
                 ->get();
 
             $processed = 0;
@@ -267,7 +276,11 @@ class ReceiptController extends Controller
                         continue;
                     }
 
-                    $remainingAmount = $amount;
+                    // Establishment + cash: at most 10,000 per run (one receipt per cron run)
+                    $amountToProcess = ($type === 'establishment' && $mode === 'cash')
+                        ? min($amount, 10000)
+                        : $amount;
+                    $remainingAmount = $amountToProcess;
                     $entryReceipts = [];
                     // Track receipts created for this entry
                     $receiptsCreatedForEntry = [];
@@ -316,7 +329,20 @@ class ReceiptController extends Controller
                         }
                     }
 
-                    if ($remainingAmount > 0) {
+                    if ($type === 'establishment' && $mode === 'cash') {
+                        // One receipt per run: reduce entry by amount used this run
+                        $amountUsed = $amountToProcess - $remainingAmount;
+                        $entry->amount = $entry->amount - $amountUsed;
+                        if ($entry->amount > 0) {
+                            $entry->status = 'pending';
+                            $entry->save();
+                            $remaining++;
+                        } else {
+                            $entry->status = 'processed';
+                            $entry->save();
+                            $processed++;
+                        }
+                    } elseif ($remainingAmount > 0) {
                         // Still has remaining amount, update entry amount and keep as pending
                         $entry->amount = $remainingAmount;
                         $entry->save();
@@ -1145,87 +1171,22 @@ $mpdf = new \Mpdf\Mpdf([
                 }
             }
         } else {
-            // For establishments - similar logic but with partners
-            $partners = $this->getEstablishmentPartners($establishmentId);
-            if (!empty($partners)) {
-                $allMembers = [];
-                foreach ($partners as $partnerFamilyId) {
-                    $partnerMembers = $this->getFamilyMembersForReceipts($partnerFamilyId);
-                    foreach ($partnerMembers as $member) {
-                        $allMembers[] = $member;
-                    }
-                }
-                
-                // Try to pay full amount to one member first
-                foreach ($allMembers as $member) {
-                    if ($this->canPersonTakeAmount($member->name, $date, $amountToPay, $receiptsCreatedInTransaction)) {
-                        $receipt = $this->createReceiptForFamilyMember(
-                            null, $establishmentId, $year, $amountToPay,
-                            $member, $request, $date, (int) $member->family_id, $receiptsCreatedInTransaction
-                        );
-                        if ($receipt) {
-                            $receipts[] = $receipt['receipt'];
-                            $receiptsCreatedInTransaction[] = [
-                                'name' => $receipt['name'],
-                                'date' => $date,
-                                'amount' => $receipt['amount']
-                            ];
-                            $amountUsed = $amountToPay;
-                            break;
-                        }
-                    }
-                }
-
-                // If couldn't pay full, split
-                if ($amountUsed < $amountToPay && $amountToPay > 10000) {
-                    $remainingToPay = $amountToPay - $amountUsed;
-                    $splitResult = $this->splitAmountAcrossMembers(
-                        null, $establishmentId, $year, $remainingToPay,
-                        $allMembers, $request, $date, $receiptsCreatedInTransaction, true
-                    );
-                    $receipts = array_merge($receipts, $splitResult['receipts']);
-                    $receiptsCreatedInTransaction = $splitResult['receipts_created'];
-                    $amountUsed += $splitResult['amount_used'];
-                }
-            } else {
-                // No partners - use establishment name
-                $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
-                if ($est) {
-                    if ($this->canPersonTakeAmount($est->name, $date, $amountToPay, $receiptsCreatedInTransaction)) {
-                        $receipt = $this->createReceiptForYear(
-                            $type, $familyId, $establishmentId, $year, $amountToPay,
-                            $request, $date, $receiptsCreatedInTransaction
-                        );
-                        if ($receipt) {
-                            $receipts[] = $receipt['receipt'];
-                            $receiptsCreatedInTransaction[] = [
-                                'name' => $receipt['name'],
-                                'date' => $date,
-                                'amount' => $receipt['amount']
-                            ];
-                            $amountUsed = $amountToPay;
-                        }
-                    } else {
-                        // Split across multiple receipts with establishment name
-                        $chunks = $this->splitCashAmount($amountToPay);
-                        foreach ($chunks as $chunk) {
-                            if ($this->canPersonTakeAmount($est->name, $date, $chunk, $receiptsCreatedInTransaction)) {
-                                $receipt = $this->createReceiptForYear(
-                                    $type, $familyId, $establishmentId, $year, $chunk,
-                                    $request, $date, $receiptsCreatedInTransaction
-                                );
-                                if ($receipt) {
-                                    $receipts[] = $receipt['receipt'];
-                                    $receiptsCreatedInTransaction[] = [
-                                        'name' => $receipt['name'],
-                                        'date' => $date,
-                                        'amount' => $receipt['amount']
-                                    ];
-                                    $amountUsed += $chunk;
-                                }
-                            }
-                        }
-                    }
+            // For establishments: receipt in establishment name only; at most one receipt (max 10,000) per day
+            $amountToPay = min($amountToPay, 10000);
+            $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+            if ($est) {
+                $receipt = $this->createReceiptForYear(
+                    $type, $familyId, $establishmentId, $year, $amountToPay,
+                    $request, $date, $receiptsCreatedInTransaction
+                );
+                if ($receipt) {
+                    $receipts[] = $receipt['receipt'];
+                    $receiptsCreatedInTransaction[] = [
+                        'name' => $receipt['name'],
+                        'date' => $date,
+                        'amount' => $receipt['amount']
+                    ];
+                    $amountUsed = $amountToPay;
                 }
             }
         }
@@ -1520,43 +1481,14 @@ $mpdf = new \Mpdf\Mpdf([
                 }
             }
         } else {
-            // For establishments
-            $partners = $this->getEstablishmentPartners($establishmentId);
-            if (!empty($partners)) {
-                // Use partners' families
-                $allMembers = [];
-                foreach ($partners as $partnerFamilyId) {
-                    $partnerMembers = $this->getFamilyMembersForReceipts($partnerFamilyId);
-                    foreach ($partnerMembers as $member) {
-                        $allMembers[] = $member;
-                    }
-                }
-                foreach ($chunks as $chunk) {
-                    $memberUsed = false;
-                    foreach ($allMembers as $member) {
-                        if (!$this->checkReceiptExistsForNameAndDate($member->name, $date)) {
-                            $receipt = $this->createReceiptForFamilyMember(null, $establishmentId, $year, $chunk, $member, $request, $date, (int) $member->family_id);
-                            if ($receipt) {
-                                $receipts[] = $receipt;
-                                $memberUsed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!$memberUsed) break;
-                }
-            } else {
-                // No partners - use establishment name (multiple receipts)
-                $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
-                if ($est) {
-                    foreach ($chunks as $chunk) {
-                        // Check if receipt exists for this name and date
-                        if (!$this->checkReceiptExistsForNameAndDate($est->name, $date)) {
-                            $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $chunk, $request, $date);
-                            if ($receipt) {
-                                $receipts[] = $receipt;
-                            }
-                        }
+            // For establishments: establishment name only; at most one receipt (max 10,000) per day
+            $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
+            if ($est) {
+                $chunk = min($amount, 10000);
+                if (!$this->checkReceiptExistsForNameAndDate($est->name, $date)) {
+                    $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $chunk, $request, $date);
+                    if ($receipt) {
+                        $receipts[] = $receipt;
                     }
                 }
             }
