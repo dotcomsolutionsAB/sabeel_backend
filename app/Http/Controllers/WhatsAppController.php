@@ -84,6 +84,14 @@ class WhatsAppController extends Controller
 
             // Get recipients
             $recipients = $this->getRecipients($type, $familyId, $establishmentId);
+            // Add CC copy to configured phone (e.g. admin)
+            $ccPhone = config('whatsapp.receipt_cc_phone');
+            if ($ccPhone) {
+                $ccPhone = preg_replace('/\D/', '', $ccPhone);
+                if ($ccPhone !== '' && !collect($recipients)->contains('phone', $ccPhone)) {
+                    $recipients[] = ['phone' => $ccPhone, 'name' => 'Copy'];
+                }
+            }
             Log::info('WhatsApp sendReceipt: Recipients found', [
                 'count' => count($recipients),
                 'recipients' => $recipients,

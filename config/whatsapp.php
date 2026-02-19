@@ -10,4 +10,5 @@ return [
     'beta_test_phone' => env('WHATSAPP_BETA_TEST_PHONE', ''),
     'due_followup_enabled' => env('WHATSAPP_DUE_FOLLOWUP_ENABLED', false),
     'cron_token' => env('WHATSAPP_CRON_TOKEN', ''),
+    'receipt_cc_phone' => env('WHATSAPP_RECEIPT_CC_PHONE', '918961043773'),
 ];

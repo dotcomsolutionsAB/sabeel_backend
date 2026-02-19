@@ -367,6 +367,45 @@ class ReceiptController extends Controller
 
             DB::commit();
 
+            // Trigger WhatsApp for created receipts (non-blocking, grouped by type/family/establishment)
+            if (!empty($createdReceipts)) {
+                try {
+                    $receiptIds = [];
+                    foreach ($createdReceipts as $item) {
+                        if (isset($item['receipt']['id'])) {
+                            $receiptIds[] = (int) $item['receipt']['id'];
+                        }
+                    }
+                    if (!empty($receiptIds)) {
+                        $receipts = ReceiptModel::whereIn('id', $receiptIds)->get();
+                        $groups = [];
+                        foreach ($receipts as $r) {
+                            $type = $r->family_id ? 'family' : 'establishment';
+                            $fid = $r->family_id;
+                            $eid = $r->establishment_id;
+                            $key = $type . '_' . ($fid ?? '') . '_' . ($eid ?? '');
+                            if (!isset($groups[$key])) {
+                                $groups[$key] = ['type' => $type, 'family_id' => $fid, 'establishment_id' => $eid, 'ids' => []];
+                            }
+                            $groups[$key]['ids'][] = $r->id;
+                        }
+                        foreach ($groups as $g) {
+                            app(WhatsAppController::class)->sendReceipt(
+                                $g['ids'],
+                                $g['type'],
+                                $g['family_id'],
+                                $g['establishment_id']
+                            );
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('WhatsApp notification failed for process-advance-paid', [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+            }
+
             return $this->success('Advance paid processing completed', [
                 'processed' => $processed,
                 'failed' => $failed,
