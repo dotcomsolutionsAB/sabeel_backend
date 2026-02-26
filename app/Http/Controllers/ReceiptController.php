@@ -221,15 +221,15 @@ class ReceiptController extends Controller
     /**
      * Process Advance Paid entries
      * POST /receipt/process-advance-paid
-     * Body: { "date": "YYYY-MM-DD" } (optional, defaults to yesterday)
+     * Body: { "date": "YYYY-MM-DD" } (optional, defaults to current date)
      */
     public function processAdvancePaid(Request $request)
     {
         try {
             DB::beginTransaction();
 
-            // Get date (default to yesterday)
-            $processDate = $request->input('date', now()->subDay()->toDateString());
+            // Get date (default to current date)
+            $processDate = $request->input('date', now()->toDateString());
 
             // Get pending entries: for this date, plus pending establishment+cash (any date) for one-receipt-per-run
             $entries = AdvancePaidModel::where('status', 'pending')
@@ -254,7 +254,8 @@ class ReceiptController extends Controller
                     $establishmentId = $entry->establishment_id;
                     $amount = (float) $entry->amount;
                     $mode = $entry->mode;
-                    $date = $entry->date->toDateString();
+                    // Use process date for receipts so we don't hit per-name-per-date limits on the advance's recorded date
+                    $date = $processDate;
 
                     // Validate against raw due (sabeel - receipts only). Advance is being converted into receipts, so we allow up to raw due.
                     $dueService = app(DueCalculationService::class);
