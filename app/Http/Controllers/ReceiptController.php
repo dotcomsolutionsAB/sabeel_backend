@@ -345,8 +345,7 @@ class ReceiptController extends Controller
                             $entry->save();
                             $remaining++;
                         } else {
-                            $entry->status = 'processed';
-                            $entry->save();
+                            $entry->delete();
                             $processed++;
                         }
                     } elseif ($remainingAmount > 0) {
@@ -355,9 +354,8 @@ class ReceiptController extends Controller
                         $entry->save();
                         $remaining++;
                     } else {
-                        // Fully processed
-                        $entry->status = 'processed';
-                        $entry->save();
+                        // Fully processed; remove entry when amount is 0
+                        $entry->delete();
                         $processed++;
                     }
 
