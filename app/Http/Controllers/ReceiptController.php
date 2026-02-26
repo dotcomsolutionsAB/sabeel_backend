@@ -256,18 +256,17 @@ class ReceiptController extends Controller
                     $mode = $entry->mode;
                     $date = $entry->date->toDateString();
 
-                    // Calculate current due (including advance_paid)
+                    // Validate against raw due (sabeel - receipts only). Advance is being converted into receipts, so we allow up to raw due.
                     $dueService = app(DueCalculationService::class);
-                    $totalDue = $type === 'family'
-                        ? $dueService->getFamilyTotalDue($familyId)
-                        : $dueService->getEstablishmentTotalDue($establishmentId);
+                    $rawTotalDue = $type === 'family'
+                        ? $dueService->getFamilyRawTotalDue($familyId)
+                        : $dueService->getEstablishmentRawTotalDue($establishmentId);
 
-                    if ($amount > $totalDue) {
-                        // Amount exceeds due, mark as failed
+                    if ($amount > $rawTotalDue) {
                         $entry->status = 'failed';
                         $entry->save();
                         $failed++;
-                        $errors[] = "Entry {$entry->id}: Amount ({$amount}) exceeds total due ({$totalDue})";
+                        $errors[] = "Entry {$entry->id}: Amount ({$amount}) exceeds total due ({$rawTotalDue})";
                         continue;
                     }
 

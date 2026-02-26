@@ -83,6 +83,18 @@ class DueCalculationService
     }
 
     /**
+     * Raw total family due (sabeel - receipts only). For advance_paid processing: amount can be applied up to this.
+     */
+    public function getFamilyRawTotalDue(int $familyId): float
+    {
+        $totalSabeel = (float) MumineenSabeelModel::where('family_id', $familyId)->sum('sabeel');
+        $totalReceipts = (float) ReceiptModel::where('family_id', $familyId)
+            ->where('status', 'active')
+            ->sum('amount');
+        return max(0.0, $totalSabeel - $totalReceipts);
+    }
+
+    /**
      * Bulk family dues. Keyed by family_id.
      *
      * @param array<int> $familyIds
@@ -229,6 +241,20 @@ class DueCalculationService
             ->where('status', 'pending')
             ->sum('amount');
         return max(0.0, $totalSabeel - $totalReceipts - $totalAdvancePaid);
+    }
+
+    /**
+     * Raw total establishment due (sabeel - receipts only). For advance_paid processing: amount can be applied up to this.
+     *
+     * @param int|string $establishmentId
+     */
+    public function getEstablishmentRawTotalDue($establishmentId): float
+    {
+        $totalSabeel = (float) EstablishmentSabeelModel::where('establishment_id', $establishmentId)->sum('sabeel');
+        $totalReceipts = (float) ReceiptModel::where('establishment_id', $establishmentId)
+            ->where('status', 'active')
+            ->sum('amount');
+        return max(0.0, $totalSabeel - $totalReceipts);
     }
 
     /**
