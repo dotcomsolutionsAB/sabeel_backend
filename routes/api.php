@@ -164,7 +164,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
 // Public endpoints (no auth required)
 Route::get('/family/sector-due-pdf/{sector}', [MumineenController::class, 'generateSectorDuePdf']);
-Route::post('/receipt/process-advance-paid', [ReceiptController::class, 'processAdvancePaid']);
+Route::get('/receipt/process-advance-paid', [ReceiptController::class, 'processAdvancePaid']);
 
 // Public cron endpoint (no auth required, but token protected)
 // Accepts both GET and POST for browser/cron compatibility
