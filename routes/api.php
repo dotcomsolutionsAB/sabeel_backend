@@ -134,6 +134,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [YearController::class, 'fetch']);
         Route::post('/update/{id}', [YearController::class, 'edit']);
         Route::delete('/delete/{id}', [YearController::class, 'delete']);
+        Route::post('/copy-sabeel-to-year', [YearController::class, 'copySabeelToNewYear']);
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
