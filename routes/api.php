@@ -17,12 +17,15 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MigrateController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\WhatsAppController;
+use App\Http\Controllers\SabeelSlabReportController;
 
 Route::post('/register', [UserController::class, 'create']);
 
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
+
+    Route::post('/sabeel/slab-breakdown', [SabeelSlabReportController::class, 'breakdown']);
 
     // dashboard route
     Route::prefix('dashboard')->group(function () {
