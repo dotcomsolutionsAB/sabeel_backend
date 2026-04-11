@@ -9,8 +9,8 @@
             <td class="col-sn">{{ $sn++ }}</td>
             <td class="col-name">{{ $u['label'] }}</td>
             <td class="col-hub">{{ number_format($u['hub']) }}</td>
-            @foreach ($reportYears as $yr)
-                <td class="col-year">{{ $u['due_by_year'][$yr] ?? '—' }}</td>
+            @foreach ($reportYears as $i => $yr)
+                <td class="col-year">{{ $u['due_cells'][$i] ?? '—' }}</td>
             @endforeach
             <td class="col-last">{!! nl2br(e($u['last_pay'])) !!}</td>
         </tr>

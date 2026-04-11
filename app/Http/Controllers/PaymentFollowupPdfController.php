@@ -8,8 +8,10 @@ use App\Models\MumineenEstablishmentModel;
 use App\Models\MumineenModel;
 use App\Models\MumineenSabeelModel;
 use App\Models\ReceiptModel;
+use App\Models\YearModel;
 use App\Services\DueCalculationService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 
@@ -32,7 +34,11 @@ class PaymentFollowupPdfController extends Controller
         try {
             $dueService = app(DueCalculationService::class);
             $currentYear = $dueService->getCurrentYear();
-            $yearsList = $this->distinctSabeelYearsSorted();
+            $reportYears = $this->resolvePaymentFollowupThreeYears($currentYear);
+            $reportYearLabels = [];
+            foreach ($reportYears as $yr) {
+                $reportYearLabels[$yr] = $this->formatDueYearHeading($yr);
+            }
 
             $establishments = EstablishmentModel::query()
                 ->where('status', 'active')
@@ -114,8 +120,8 @@ class PaymentFollowupPdfController extends Controller
                     'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                 ];
 
-                $dueByYear = $this->buildDueByYearCells(
-                    $yearsList,
+                $dueCells = $this->buildPaymentFollowupDueCells(
+                    $reportYears,
                     $currentYear,
                     (float) ($eRow['due_effective'] ?? 0),
                     $estSabeelByYear[$eid] ?? [],
@@ -134,8 +140,8 @@ class PaymentFollowupPdfController extends Controller
                     $fRow = $famDueBulk[$fid] ?? [
                         'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                     ];
-                    $fDueByYear = $this->buildDueByYearCells(
-                        $yearsList,
+                    $fDueCells = $this->buildPaymentFollowupDueCells(
+                        $reportYears,
                         $currentYear,
                         (float) ($fRow['due_effective'] ?? 0),
                         $famSabeelByYear[$fid] ?? [],
@@ -145,7 +151,7 @@ class PaymentFollowupPdfController extends Controller
                     $partners[] = [
                         'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
                         'hub'         => (int) ($fRow['sabeel'] ?? 0),
-                        'due_by_year' => $fDueByYear,
+                        'due_cells'   => $fDueCells,
                         'last_pay'    => $this->formatLastPaymentCompact($lastFam),
                     ];
                 }
@@ -154,7 +160,7 @@ class PaymentFollowupPdfController extends Controller
                 $blocks[] = [
                     'establishment_name' => $est->name,
                     'hub'                => (int) ($eRow['sabeel'] ?? 0),
-                    'due_by_year'        => $dueByYear,
+                    'due_cells'          => $dueCells,
                     'last_pay'           => $this->formatLastPaymentCompact($lastEst),
                     'partners'           => $partners,
                 ];
@@ -166,8 +172,8 @@ class PaymentFollowupPdfController extends Controller
                 $fRow = $famDueBulk[$fid] ?? [
                     'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                 ];
-                $fDueByYear = $this->buildDueByYearCells(
-                    $yearsList,
+                $fDueCells = $this->buildPaymentFollowupDueCells(
+                    $reportYears,
                     $currentYear,
                     (float) ($fRow['due_effective'] ?? 0),
                     $famSabeelByYear[$fid] ?? [],
@@ -177,12 +183,12 @@ class PaymentFollowupPdfController extends Controller
                 $untagged[] = [
                     'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
                     'hub'         => (int) ($fRow['sabeel'] ?? 0),
-                    'due_by_year' => $fDueByYear,
+                    'due_cells'   => $fDueCells,
                     'last_pay'    => $this->formatLastPaymentCompact($lastFam),
                 ];
             }
 
-            return $this->renderPdfResponse($blocks, $untagged, $currentYear, $yearsList);
+            return $this->renderPdfResponse($blocks, $untagged, $currentYear, $reportYears, $reportYearLabels);
         } catch (\Throwable $e) {
             return response()->json([
                 'code'    => 500,
@@ -274,30 +280,76 @@ class PaymentFollowupPdfController extends Controller
     }
 
     /**
-     * One cell per year (aligned under year column headers).
+     * PDF shows exactly three Due columns (oldest → current). First column = all raw dues for years
+     * strictly before the middle year (previous arrears + that oldest displayed year). Middle = raw due
+     * for middle year. Last = effective due for current year when it matches $currentYear, else raw.
      *
-     * @param array<string, int>   $sabeelByYear
-     * @param array<string, float> $paidByYear
-     * @return array<string, string>
+     * @param array{0: string, 1: string, 2: string} $reportYearsAsc
+     * @param array<string, int>                     $sabeelByYear
+     * @param array<string, float>                   $paidByYear
+     * @return array{0: string, 1: string, 2: string}
      */
-    private function buildDueByYearCells(
-        array $yearsList,
+    private function buildPaymentFollowupDueCells(
+        array $reportYearsAsc,
         string $currentYear,
         float $currentYearEffectiveDue,
         array $sabeelByYear,
         array $paidByYear
     ): array {
-        $cells = [];
-        foreach ($yearsList as $y) {
-            $year = (string) $y;
-            $sabeel = (int) ($sabeelByYear[$year] ?? 0);
-            $paid = (float) ($paidByYear[$year] ?? 0);
-            $rawDue = max(0.0, $sabeel - $paid);
-            $due = ($year === $currentYear) ? $currentYearEffectiveDue : $rawDue;
-            $cells[$year] = $due > 0.005 ? number_format($due, 2) : '—';
+        $y0 = (string) $reportYearsAsc[0];
+        $y1 = (string) $reportYearsAsc[1];
+        $y2 = (string) $reportYearsAsc[2];
+
+        $yearsToScan = array_unique(array_merge(array_keys($sabeelByYear), array_keys($paidByYear)));
+        $sumBeforeMiddle = 0.0;
+        foreach ($yearsToScan as $yStr) {
+            if ($yStr < $y1) {
+                $sabeel = (int) ($sabeelByYear[$yStr] ?? 0);
+                $paid = (float) ($paidByYear[$yStr] ?? 0);
+                $sumBeforeMiddle += max(0.0, $sabeel - $paid);
+            }
         }
 
-        return $cells;
+        $s1 = (int) ($sabeelByYear[$y1] ?? 0);
+        $p1 = (float) ($paidByYear[$y1] ?? 0);
+        $dueMiddle = max(0.0, $s1 - $p1);
+
+        $s2 = (int) ($sabeelByYear[$y2] ?? 0);
+        $p2 = (float) ($paidByYear[$y2] ?? 0);
+        $rawLast = max(0.0, $s2 - $p2);
+        $dueLast = ($y2 === $currentYear) ? $currentYearEffectiveDue : $rawLast;
+
+        // Numeric keys so duplicate year labels (sparse t_year) still produce three columns.
+        return [
+            0 => $sumBeforeMiddle > 0.005 ? number_format($sumBeforeMiddle, 2) : '—',
+            1 => $dueMiddle > 0.005 ? number_format($dueMiddle, 2) : '—',
+            2 => $dueLast > 0.005 ? number_format($dueLast, 2) : '—',
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private function resolvePaymentFollowupThreeYears(string $currentYear): array
+    {
+        $y2 = $currentYear;
+        if (!Schema::hasTable('t_year')) {
+            return [$y2, $y2, $y2];
+        }
+        $y1 = (string) (YearModel::where('year', '<', $y2)->orderBy('year', 'desc')->value('year') ?? $y2);
+        $y0 = (string) (YearModel::where('year', '<', $y1)->orderBy('year', 'desc')->value('year') ?? $y1);
+
+        return [$y0, $y1, $y2];
+    }
+
+    /** e.g. 24-25 → 2024-25 for PDF headers */
+    private function formatDueYearHeading(string $year): string
+    {
+        if (preg_match('/^\d{2}-\d{2}$/', $year)) {
+            return '20' . $year;
+        }
+
+        return $year;
     }
 
     /**
@@ -372,26 +424,6 @@ class PaymentFollowupPdfController extends Controller
         return $out;
     }
 
-    /**
-     * @return array<int, string>
-     */
-    private function distinctSabeelYearsSorted(): array
-    {
-        $rows = DB::select('
-            SELECT DISTINCT year FROM t_establishment_sabeel WHERE year IS NOT NULL AND year != \'\'
-            UNION
-            SELECT DISTINCT year FROM t_mumineen_sabeel WHERE year IS NOT NULL AND year != \'\'
-        ');
-        $merged = [];
-        foreach ($rows as $row) {
-            $merged[] = (string) $row->year;
-        }
-        $merged = array_values(array_unique($merged));
-        sort($merged, SORT_STRING);
-
-        return $merged;
-    }
-
     /** Compact last payment for narrow PDF column (stacked lines). */
     private function formatLastPaymentCompact(?ReceiptModel $r): string
     {
@@ -408,9 +440,16 @@ class PaymentFollowupPdfController extends Controller
     /**
      * @param array<int, array<string, mixed>> $blocks
      * @param array<int, array<string, mixed>> $untagged
-     * @param array<int, string>               $reportYears
+     * @param array{0: string, 1: string, 2: string} $reportYears
+     * @param array<string, string>                  $reportYearLabels
      */
-    private function renderPdfResponse(array $blocks, array $untagged, string $currentYear, array $reportYears = [])
+    private function renderPdfResponse(
+        array $blocks,
+        array $untagged,
+        string $currentYear,
+        array $reportYears,
+        array $reportYearLabels
+    )
     {
         $generatedAt = now()->timezone('Asia/Kolkata')->format('d-m-Y H:i:s') . ' IST';
         $title = 'Payment follow-up (establishment-wise)';
@@ -436,7 +475,7 @@ class PaymentFollowupPdfController extends Controller
 
         $mpdf->SetHTMLHeader($headerHtml, '', true);
         $mpdf->SetFooter('{PAGENO} / {nb}');
-        $this->writePaymentFollowupPdfBody($mpdf, $title, $currentYear, $reportYears, $blocks, $untagged);
+        $this->writePaymentFollowupPdfBody($mpdf, $title, $currentYear, $reportYears, $reportYearLabels, $blocks, $untagged);
 
         $filename = 'payment_followup_establishment_' . now()->format('Y-m-d_His') . '.pdf';
 
@@ -451,7 +490,14 @@ class PaymentFollowupPdfController extends Controller
     {
         $dueService = app(DueCalculationService::class);
 
-        return $this->renderPdfResponse([], [], $dueService->getCurrentYear(), $this->distinctSabeelYearsSorted());
+        $cur = $dueService->getCurrentYear();
+        $reportYears = $this->resolvePaymentFollowupThreeYears($cur);
+        $reportYearLabels = [];
+        foreach ($reportYears as $yr) {
+            $reportYearLabels[$yr] = $this->formatDueYearHeading($yr);
+        }
+
+        return $this->renderPdfResponse([], [], $cur, $reportYears, $reportYearLabels);
     }
 
     /**
@@ -459,13 +505,15 @@ class PaymentFollowupPdfController extends Controller
      *
      * @param array<int, array<string, mixed>> $blocks
      * @param array<int, array<string, mixed>> $untagged
-     * @param array<int, string>               $reportYears
+     * @param array{0: string, 1: string, 2: string} $reportYears
+     * @param array<string, string>                  $reportYearLabels
      */
     private function writePaymentFollowupPdfBody(
         Mpdf $mpdf,
         string $title,
         string $currentYear,
         array $reportYears,
+        array $reportYearLabels,
         array $blocks,
         array $untagged
     ): void {
@@ -479,9 +527,10 @@ class PaymentFollowupPdfController extends Controller
             $html = '';
             if ($idx === 0) {
                 $html .= view('payment_followup_pdf_est_open', [
-                    'title'       => $title,
-                    'currentYear' => $currentYear,
-                    'reportYears' => $reportYears,
+                    'title'              => $title,
+                    'currentYear'        => $currentYear,
+                    'reportYears'        => $reportYears,
+                    'reportYearLabels'   => $reportYearLabels,
                 ])->render();
             }
             $html .= view('payment_followup_pdf_est_rows', [
@@ -498,8 +547,9 @@ class PaymentFollowupPdfController extends Controller
 
         $mpdf->WriteHTML(
             view('payment_followup_pdf_untagged_section_open', [
-                'currentYear' => $currentYear,
-                'reportYears' => $reportYears,
+                'currentYear'      => $currentYear,
+                'reportYears'      => $reportYears,
+                'reportYearLabels' => $reportYearLabels,
             ])->render(),
             HTMLParserMode::HTML_BODY,
             false,
@@ -509,10 +559,11 @@ class PaymentFollowupPdfController extends Controller
         if ($untagged === []) {
             $mpdf->WriteHTML(
                 view('payment_followup_pdf_untagged_rows', [
-                    'reportYears' => $reportYears,
-                    'empty'       => true,
-                    'untagged'    => [],
-                    'startSn'     => 1,
+                    'reportYears'      => $reportYears,
+                    'reportYearLabels' => $reportYearLabels,
+                    'empty'            => true,
+                    'untagged'         => [],
+                    'startSn'          => 1,
                 ])->render(),
                 HTMLParserMode::HTML_BODY,
                 false,
@@ -523,10 +574,11 @@ class PaymentFollowupPdfController extends Controller
             foreach (array_chunk($untagged, self::PDF_UNTAGGED_CHUNK) as $uChunk) {
                 $mpdf->WriteHTML(
                     view('payment_followup_pdf_untagged_rows', [
-                        'reportYears' => $reportYears,
-                        'empty'       => false,
-                        'untagged'    => $uChunk,
-                        'startSn'     => $rowSn2,
+                        'reportYears'      => $reportYears,
+                        'reportYearLabels' => $reportYearLabels,
+                        'empty'            => false,
+                        'untagged'         => $uChunk,
+                        'startSn'          => $rowSn2,
                     ])->render(),
                     HTMLParserMode::HTML_BODY,
                     false,
