@@ -10,10 +10,16 @@ use App\Models\MumineenSabeelModel;
 use App\Models\ReceiptModel;
 use App\Services\DueCalculationService;
 use Illuminate\Support\Facades\DB;
+use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 
 class PaymentFollowupPdfController extends Controller
 {
+    /** Max table rows per WriteHTML chunk (establishment + partner lines). */
+    private const PDF_MAX_EST_TABLE_ROWS = 300;
+
+    /** Max untagged family rows per WriteHTML chunk. */
+    private const PDF_UNTAGGED_CHUNK = 80;
     /**
      * GET /establishment/payment-followup-pdf
      * Bulk-loaded data only (avoids N+1 / gateway timeouts).
@@ -409,14 +415,8 @@ class PaymentFollowupPdfController extends Controller
         $generatedAt = now()->timezone('Asia/Kolkata')->format('d-m-Y H:i:s') . ' IST';
         $title = 'Payment follow-up (establishment-wise)';
 
-        $html = view('payment_followup_establishment_pdf', [
-            'title'        => $title,
-            'currentYear'  => $currentYear,
-            'generatedAt'  => $generatedAt,
-            'blocks'       => $blocks,
-            'untagged'     => $untagged,
-            'reportYears'  => $reportYears,
-        ])->render();
+        @ini_set('pcre.backtrack_limit', '10000000');
+        @ini_set('pcre.recursion_limit', '10000000');
 
         $mpdf = new Mpdf([
             'mode'          => 'utf-8',
@@ -436,7 +436,7 @@ class PaymentFollowupPdfController extends Controller
 
         $mpdf->SetHTMLHeader($headerHtml, '', true);
         $mpdf->SetFooter('{PAGENO} / {nb}');
-        $mpdf->WriteHTML($html);
+        $this->writePaymentFollowupPdfBody($mpdf, $title, $currentYear, $reportYears, $blocks, $untagged);
 
         $filename = 'payment_followup_establishment_' . now()->format('Y-m-d_His') . '.pdf';
 
@@ -452,5 +452,124 @@ class PaymentFollowupPdfController extends Controller
         $dueService = app(DueCalculationService::class);
 
         return $this->renderPdfResponse([], [], $dueService->getCurrentYear(), $this->distinctSabeelYearsSorted());
+    }
+
+    /**
+     * Split HTML across WriteHTML calls so each string stays under PHP PCRE limits (mPDF regex on full input).
+     *
+     * @param array<int, array<string, mixed>> $blocks
+     * @param array<int, array<string, mixed>> $untagged
+     * @param array<int, string>               $reportYears
+     */
+    private function writePaymentFollowupPdfBody(
+        Mpdf $mpdf,
+        string $title,
+        string $currentYear,
+        array $reportYears,
+        array $blocks,
+        array $untagged
+    ): void {
+        $mpdf->WriteHTML(view('payment_followup_pdf_css')->render(), HTMLParserMode::HEADER_CSS);
+
+        $estChunks = $this->chunkEstablishmentBlocksForPdf($blocks);
+        $bodyInit = true;
+        $rowSn = 1;
+
+        foreach ($estChunks as $idx => $chunk) {
+            $html = '';
+            if ($idx === 0) {
+                $html .= view('payment_followup_pdf_est_open', [
+                    'title'       => $title,
+                    'currentYear' => $currentYear,
+                    'reportYears' => $reportYears,
+                ])->render();
+            }
+            $html .= view('payment_followup_pdf_est_rows', [
+                'blocks'      => $chunk,
+                'reportYears' => $reportYears,
+                'startSn'     => $rowSn,
+            ])->render();
+            foreach ($chunk as $b) {
+                $rowSn += 1 + count($b['partners'] ?? []);
+            }
+            $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY, $bodyInit, false);
+            $bodyInit = false;
+        }
+
+        $mpdf->WriteHTML(
+            view('payment_followup_pdf_untagged_section_open', [
+                'currentYear' => $currentYear,
+                'reportYears' => $reportYears,
+            ])->render(),
+            HTMLParserMode::HTML_BODY,
+            false,
+            false
+        );
+
+        if ($untagged === []) {
+            $mpdf->WriteHTML(
+                view('payment_followup_pdf_untagged_rows', [
+                    'reportYears' => $reportYears,
+                    'empty'       => true,
+                    'untagged'    => [],
+                    'startSn'     => 1,
+                ])->render(),
+                HTMLParserMode::HTML_BODY,
+                false,
+                false
+            );
+        } else {
+            $rowSn2 = 1;
+            foreach (array_chunk($untagged, self::PDF_UNTAGGED_CHUNK) as $uChunk) {
+                $mpdf->WriteHTML(
+                    view('payment_followup_pdf_untagged_rows', [
+                        'reportYears' => $reportYears,
+                        'empty'       => false,
+                        'untagged'    => $uChunk,
+                        'startSn'     => $rowSn2,
+                    ])->render(),
+                    HTMLParserMode::HTML_BODY,
+                    false,
+                    false
+                );
+                $rowSn2 += count($uChunk);
+            }
+        }
+
+        $mpdf->WriteHTML(
+            view('payment_followup_pdf_close')->render(),
+            HTMLParserMode::HTML_BODY,
+            false,
+            true
+        );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $blocks
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function chunkEstablishmentBlocksForPdf(array $blocks): array
+    {
+        if ($blocks === []) {
+            return [[]];
+        }
+        $chunks = [];
+        $current = [];
+        $rowsInCurrent = 0;
+        foreach ($blocks as $b) {
+            $rowCount = 1 + count($b['partners'] ?? []);
+            if ($current !== [] && $rowsInCurrent + $rowCount > self::PDF_MAX_EST_TABLE_ROWS) {
+                $chunks[] = $current;
+                $current = [];
+                $rowsInCurrent = 0;
+            }
+            $current[] = $b;
+            $rowsInCurrent += $rowCount;
+        }
+        if ($current !== []) {
+            $chunks[] = $current;
+        }
+
+        return $chunks;
     }
 }
