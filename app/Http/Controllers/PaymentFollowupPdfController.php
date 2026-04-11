@@ -108,7 +108,7 @@ class PaymentFollowupPdfController extends Controller
                     'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                 ];
 
-                $dueLines = $this->buildDueLinesFromMaps(
+                $dueByYear = $this->buildDueByYearCells(
                     $yearsList,
                     $currentYear,
                     (float) ($eRow['due_effective'] ?? 0),
@@ -128,7 +128,7 @@ class PaymentFollowupPdfController extends Controller
                     $fRow = $famDueBulk[$fid] ?? [
                         'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                     ];
-                    $fDueLines = $this->buildDueLinesFromMaps(
+                    $fDueByYear = $this->buildDueByYearCells(
                         $yearsList,
                         $currentYear,
                         (float) ($fRow['due_effective'] ?? 0),
@@ -137,11 +137,10 @@ class PaymentFollowupPdfController extends Controller
                     );
                     $lastFam = $lastReceiptByFam[$fid] ?? null;
                     $partners[] = [
-                        'label'     => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
-                        'hub'       => (int) ($fRow['sabeel'] ?? 0),
-                        'paid'      => (float) ($fRow['paid'] ?? 0),
-                        'due_lines' => $fDueLines,
-                        'last_pay'  => $this->formatLastPayment($lastFam),
+                        'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
+                        'hub'         => (int) ($fRow['sabeel'] ?? 0),
+                        'due_by_year' => $fDueByYear,
+                        'last_pay'    => $this->formatLastPaymentCompact($lastFam),
                     ];
                 }
                 usort($partners, fn ($a, $b) => strcmp($a['label'], $b['label']));
@@ -149,9 +148,8 @@ class PaymentFollowupPdfController extends Controller
                 $blocks[] = [
                     'establishment_name' => $est->name,
                     'hub'                => (int) ($eRow['sabeel'] ?? 0),
-                    'paid'               => (float) ($eRow['paid'] ?? 0),
-                    'due_lines'          => $dueLines,
-                    'last_pay'           => $this->formatLastPayment($lastEst),
+                    'due_by_year'        => $dueByYear,
+                    'last_pay'           => $this->formatLastPaymentCompact($lastEst),
                     'partners'           => $partners,
                 ];
             }
@@ -162,7 +160,7 @@ class PaymentFollowupPdfController extends Controller
                 $fRow = $famDueBulk[$fid] ?? [
                     'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
                 ];
-                $fDueLines = $this->buildDueLinesFromMaps(
+                $fDueByYear = $this->buildDueByYearCells(
                     $yearsList,
                     $currentYear,
                     (float) ($fRow['due_effective'] ?? 0),
@@ -171,15 +169,14 @@ class PaymentFollowupPdfController extends Controller
                 );
                 $lastFam = $lastReceiptByFam[$fid] ?? null;
                 $untagged[] = [
-                    'label'     => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
-                    'hub'       => (int) ($fRow['sabeel'] ?? 0),
-                    'paid'      => (float) ($fRow['paid'] ?? 0),
-                    'due_lines' => $fDueLines,
-                    'last_pay'  => $this->formatLastPayment($lastFam),
+                    'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
+                    'hub'         => (int) ($fRow['sabeel'] ?? 0),
+                    'due_by_year' => $fDueByYear,
+                    'last_pay'    => $this->formatLastPaymentCompact($lastFam),
                 ];
             }
 
-            return $this->renderPdfResponse($blocks, $untagged, $currentYear);
+            return $this->renderPdfResponse($blocks, $untagged, $currentYear, $yearsList);
         } catch (\Throwable $e) {
             return response()->json([
                 'code'    => 500,
@@ -271,32 +268,30 @@ class PaymentFollowupPdfController extends Controller
     }
 
     /**
+     * One cell per year (aligned under year column headers).
+     *
      * @param array<string, int>   $sabeelByYear
      * @param array<string, float> $paidByYear
+     * @return array<string, string>
      */
-    private function buildDueLinesFromMaps(
+    private function buildDueByYearCells(
         array $yearsList,
         string $currentYear,
         float $currentYearEffectiveDue,
         array $sabeelByYear,
         array $paidByYear
-    ): string {
-        $lines = [];
+    ): array {
+        $cells = [];
         foreach ($yearsList as $y) {
             $year = (string) $y;
             $sabeel = (int) ($sabeelByYear[$year] ?? 0);
             $paid = (float) ($paidByYear[$year] ?? 0);
             $rawDue = max(0.0, $sabeel - $paid);
             $due = ($year === $currentYear) ? $currentYearEffectiveDue : $rawDue;
-            if ($due > 0.005) {
-                $lines[] = $year . ': Rs. ' . number_format($due, 2);
-            }
-        }
-        if ($lines === []) {
-            return '—';
+            $cells[$year] = $due > 0.005 ? number_format($due, 2) : '—';
         }
 
-        return implode("\n", $lines);
+        return $cells;
     }
 
     /**
@@ -391,31 +386,36 @@ class PaymentFollowupPdfController extends Controller
         return $merged;
     }
 
-    private function formatLastPayment(?ReceiptModel $r): string
+    /** Compact last payment for narrow PDF column (stacked lines). */
+    private function formatLastPaymentCompact(?ReceiptModel $r): string
     {
         if (!$r) {
             return '—';
         }
-        $d = $r->date ? $r->date->format('d-m-Y') : '';
+        $d = $r->date ? $r->date->format('d-m-y') : '';
+        $amt = number_format((float) $r->amount, 0);
+        $mode = $r->mode ?? '';
 
-        return 'Rs. ' . number_format((float) $r->amount, 2) . ' | ' . $d . ' | ' . ($r->mode ?? '');
+        return $amt . "\n" . $d . "\n" . $mode;
     }
 
     /**
      * @param array<int, array<string, mixed>> $blocks
      * @param array<int, array<string, mixed>> $untagged
+     * @param array<int, string>               $reportYears
      */
-    private function renderPdfResponse(array $blocks, array $untagged, string $currentYear)
+    private function renderPdfResponse(array $blocks, array $untagged, string $currentYear, array $reportYears = [])
     {
-        $generatedAt = now()->format('d-m-Y H:i:s');
+        $generatedAt = now()->timezone('Asia/Kolkata')->format('d-m-Y H:i:s') . ' IST';
         $title = 'Payment follow-up (establishment-wise)';
 
         $html = view('payment_followup_establishment_pdf', [
-            'title'       => $title,
-            'currentYear' => $currentYear,
-            'generatedAt' => $generatedAt,
-            'blocks'      => $blocks,
-            'untagged'    => $untagged,
+            'title'        => $title,
+            'currentYear'  => $currentYear,
+            'generatedAt'  => $generatedAt,
+            'blocks'       => $blocks,
+            'untagged'     => $untagged,
+            'reportYears'  => $reportYears,
         ])->render();
 
         $mpdf = new Mpdf([
@@ -449,6 +449,8 @@ class PaymentFollowupPdfController extends Controller
 
     private function emptyPdfResponse()
     {
-        return $this->renderPdfResponse([], [], app(DueCalculationService::class)->getCurrentYear());
+        $dueService = app(DueCalculationService::class);
+
+        return $this->renderPdfResponse([], [], $dueService->getCurrentYear(), $this->distinctSabeelYearsSorted());
     }
 }
