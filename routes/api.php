@@ -18,6 +18,7 @@ use App\Http\Controllers\MigrateController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\SabeelSlabReportController;
+use App\Http\Controllers\PaymentFollowupPdfController;
 
 Route::post('/register', [UserController::class, 'create']);
 
@@ -80,6 +81,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{establishment_id}', [EstablishmentController::class, 'edit']);
         Route::post('/update-verification/{establishment_id}', [EstablishmentController::class, 'updateVerification']);
         Route::delete('/delete/{establishment_id}', [EstablishmentController::class, 'delete']);
+        Route::get('/payment-followup-pdf', [PaymentFollowupPdfController::class, 'establishmentWisePdf']);
     });
 
     // establishment-partner route
