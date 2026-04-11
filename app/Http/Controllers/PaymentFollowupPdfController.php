@@ -3,22 +3,26 @@
 namespace App\Http\Controllers;
 
 use App\Models\EstablishmentModel;
+use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
 use App\Models\MumineenModel;
-use App\Models\ReceiptModel;
-use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenSabeelModel;
+use App\Models\ReceiptModel;
 use App\Services\DueCalculationService;
+use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
 
 class PaymentFollowupPdfController extends Controller
 {
     /**
      * GET /establishment/payment-followup-pdf
-     * Landscape A4 PDF: establishment hub + year-wise due, partner personal rows, last payment; then untagged families.
+     * Bulk-loaded data only (avoids N+1 / gateway timeouts).
      */
     public function establishmentWisePdf()
     {
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
         try {
             $dueService = app(DueCalculationService::class);
             $currentYear = $dueService->getCurrentYear();
@@ -29,136 +33,153 @@ class PaymentFollowupPdfController extends Controller
                 ->orderBy('name')
                 ->get();
 
+            if ($establishments->isEmpty()) {
+                return $this->emptyPdfResponse();
+            }
+
+            $estIds = $establishments->pluck('establishment_id')->unique()->values()->all();
+
+            $estDueBulk = $dueService->getEstablishmentDueBulk($estIds, $currentYear);
+            $estSabeelByYear = $this->nestEstSabeelByYear(
+                EstablishmentSabeelModel::query()
+                    ->whereIn('establishment_id', $estIds)
+                    ->get(['establishment_id', 'year', 'sabeel'])
+            );
+            $estPaidByYear = $this->nestPaidByYear(
+                DB::table('t_receipts')
+                    ->whereIn('establishment_id', $estIds)
+                    ->where('status', 'active')
+                    ->select('establishment_id', 'year', DB::raw('SUM(amount) as paid'))
+                    ->groupBy('establishment_id', 'year')
+                    ->get()
+            );
+
+            $lastReceiptByEst = $this->lastReceiptIdsKeyed('establishment_id', $estIds);
+
+            $linksByEst = MumineenEstablishmentModel::query()
+                ->whereIn('establishment_id', $estIds)
+                ->get()
+                ->groupBy('establishment_id');
+
+            $partnerFamilyIds = $linksByEst->flatten()->pluck('family_id')->unique()->values()->all();
+
+            $linkedFamilyIds = MumineenEstablishmentModel::query()
+                ->distinct()
+                ->pluck('family_id');
+
+            $untaggedHofs = MumineenModel::query()
+                ->where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->when($linkedFamilyIds->isNotEmpty(), fn ($q) => $q->whereNotIn('family_id', $linkedFamilyIds->all()))
+                ->orderBy('name')
+                ->get();
+
+            $untaggedFamilyIds = $untaggedHofs->pluck('family_id')->all();
+            $allFamilyIds = array_values(array_unique(array_merge($partnerFamilyIds, $untaggedFamilyIds)));
+
+            $hofsByFamily = MumineenModel::query()
+                ->whereIn('family_id', $allFamilyIds)
+                ->where('hof_type', 'HOF')
+                ->where('status', 'active')
+                ->get()
+                ->keyBy('family_id');
+
+            $famDueBulk = $allFamilyIds === [] ? [] : $dueService->getFamilyDueBulk($allFamilyIds, $currentYear);
+            $famSabeelByYear = $allFamilyIds === [] ? [] : $this->nestFamSabeelByYear(
+                MumineenSabeelModel::query()
+                    ->whereIn('family_id', $allFamilyIds)
+                    ->get(['family_id', 'year', 'sabeel'])
+            );
+            $famPaidByYear = $allFamilyIds === [] ? [] : $this->nestFamilyPaidByYear(
+                DB::table('t_receipts')
+                    ->whereIn('family_id', $allFamilyIds)
+                    ->where('status', 'active')
+                    ->select('family_id', 'year', DB::raw('SUM(amount) as paid'))
+                    ->groupBy('family_id', 'year')
+                    ->get()
+            );
+
+            $lastReceiptByFam = $allFamilyIds === [] ? [] : $this->lastReceiptIdsKeyed('family_id', $allFamilyIds);
+
             $blocks = [];
             foreach ($establishments as $est) {
                 $eid = $est->establishment_id;
-                $eDue = $dueService->getEstablishmentDue($eid, $currentYear);
-                $byYear = $dueService->getEstablishmentDueByYear($eid, $yearsList);
-                $dueLines = $this->buildYearDueLines($byYear, $currentYear, $eDue['due_effective']);
+                $eRow = $estDueBulk[$eid] ?? [
+                    'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
+                ];
 
-                $lastEst = ReceiptModel::query()
-                    ->where('establishment_id', $eid)
-                    ->where('status', 'active')
-                    ->orderByDesc('date')
-                    ->orderByDesc('id')
-                    ->first();
+                $dueLines = $this->buildDueLinesFromMaps(
+                    $yearsList,
+                    $currentYear,
+                    (float) ($eRow['due_effective'] ?? 0),
+                    $estSabeelByYear[$eid] ?? [],
+                    $estPaidByYear[$eid] ?? []
+                );
 
-                $partnerLinks = MumineenEstablishmentModel::where('establishment_id', $eid)->get();
-                $familyIds = $partnerLinks->pluck('family_id')->unique()->values()->all();
+                $lastEst = $lastReceiptByEst[$eid] ?? null;
 
                 $partners = [];
-                foreach ($familyIds as $fid) {
-                    $hof = MumineenModel::where('family_id', $fid)
-                        ->where('hof_type', 'HOF')
-                        ->where('status', 'active')
-                        ->first();
+                foreach ($linksByEst->get($eid, collect()) as $lnk) {
+                    $fid = (int) $lnk->family_id;
+                    $hof = $hofsByFamily->get($fid);
                     if (!$hof) {
                         continue;
                     }
-                    $fDue = $dueService->getFamilyDue($fid, $currentYear);
-                    $fByYear = $dueService->getFamilyDueByYear($fid, $yearsList);
-                    $fDueLines = $this->buildYearDueLines($fByYear, $currentYear, $fDue['due_effective']);
-
-                    $lastFam = ReceiptModel::query()
-                        ->where('family_id', $fid)
-                        ->where('status', 'active')
-                        ->orderByDesc('date')
-                        ->orderByDesc('id')
-                        ->first();
-
+                    $fRow = $famDueBulk[$fid] ?? [
+                        'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
+                    ];
+                    $fDueLines = $this->buildDueLinesFromMaps(
+                        $yearsList,
+                        $currentYear,
+                        (float) ($fRow['due_effective'] ?? 0),
+                        $famSabeelByYear[$fid] ?? [],
+                        $famPaidByYear[$fid] ?? []
+                    );
+                    $lastFam = $lastReceiptByFam[$fid] ?? null;
                     $partners[] = [
-                        'label'      => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
-                        'hub'        => (int) $fDue['sabeel'],
-                        'paid'       => (float) $fDue['paid'],
-                        'due_lines'  => $fDueLines,
-                        'last_pay'   => $this->formatLastPayment($lastFam),
+                        'label'     => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
+                        'hub'       => (int) ($fRow['sabeel'] ?? 0),
+                        'paid'      => (float) ($fRow['paid'] ?? 0),
+                        'due_lines' => $fDueLines,
+                        'last_pay'  => $this->formatLastPayment($lastFam),
                     ];
                 }
                 usort($partners, fn ($a, $b) => strcmp($a['label'], $b['label']));
 
                 $blocks[] = [
                     'establishment_name' => $est->name,
-                    'hub'                => (int) $eDue['sabeel'],
-                    'paid'               => (float) $eDue['paid'],
+                    'hub'                => (int) ($eRow['sabeel'] ?? 0),
+                    'paid'               => (float) ($eRow['paid'] ?? 0),
                     'due_lines'          => $dueLines,
                     'last_pay'           => $this->formatLastPayment($lastEst),
                     'partners'           => $partners,
                 ];
             }
 
-            $linkedFamilyIds = MumineenEstablishmentModel::query()
-                ->distinct()
-                ->pluck('family_id');
-
-            $untaggedQuery = MumineenModel::query()
-                ->where('hof_type', 'HOF')
-                ->where('status', 'active')
-                ->orderBy('name');
-            if ($linkedFamilyIds->isNotEmpty()) {
-                $untaggedQuery->whereNotIn('family_id', $linkedFamilyIds->all());
-            }
-
             $untagged = [];
-            foreach ($untaggedQuery->get() as $hof) {
-                $fid = $hof->family_id;
-                $fDue = $dueService->getFamilyDue($fid, $currentYear);
-                $fByYear = $dueService->getFamilyDueByYear($fid, $yearsList);
-                $fDueLines = $this->buildYearDueLines($fByYear, $currentYear, $fDue['due_effective']);
-
-                $lastFam = ReceiptModel::query()
-                    ->where('family_id', $fid)
-                    ->where('status', 'active')
-                    ->orderByDesc('date')
-                    ->orderByDesc('id')
-                    ->first();
-
+            foreach ($untaggedHofs as $hof) {
+                $fid = (int) $hof->family_id;
+                $fRow = $famDueBulk[$fid] ?? [
+                    'sabeel' => 0, 'paid' => 0.0, 'due_effective' => 0.0,
+                ];
+                $fDueLines = $this->buildDueLinesFromMaps(
+                    $yearsList,
+                    $currentYear,
+                    (float) ($fRow['due_effective'] ?? 0),
+                    $famSabeelByYear[$fid] ?? [],
+                    $famPaidByYear[$fid] ?? []
+                );
+                $lastFam = $lastReceiptByFam[$fid] ?? null;
                 $untagged[] = [
                     'label'     => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
-                    'hub'       => (int) $fDue['sabeel'],
-                    'paid'      => (float) $fDue['paid'],
+                    'hub'       => (int) ($fRow['sabeel'] ?? 0),
+                    'paid'      => (float) ($fRow['paid'] ?? 0),
                     'due_lines' => $fDueLines,
                     'last_pay'  => $this->formatLastPayment($lastFam),
                 ];
             }
 
-            $generatedAt = now()->format('d-m-Y H:i:s');
-            $title = 'Payment follow-up (establishment-wise)';
-
-            $html = view('payment_followup_establishment_pdf', [
-                'title'        => $title,
-                'currentYear'  => $currentYear,
-                'generatedAt'  => $generatedAt,
-                'blocks'       => $blocks,
-                'untagged'     => $untagged,
-            ])->render();
-
-            $mpdf = new Mpdf([
-                'mode'          => 'utf-8',
-                'format'        => 'A4-L',
-                'orientation'   => 'L',
-                'margin_left'   => 8,
-                'margin_right'  => 8,
-                'margin_top'    => 22,
-                'margin_bottom' => 12,
-                'margin_header' => 6,
-            ]);
-
-            $headerHtml = '<table style="width:100%;font-size:9px;border-bottom:1px solid #333;margin-bottom:4px;"><tr>'
-                . '<td style="text-align:left;font-weight:bold;">' . htmlspecialchars($title) . '</td>'
-                . '<td style="text-align:right;">Generated: ' . htmlspecialchars($generatedAt) . '</td>'
-                . '</tr></table>';
-
-            $mpdf->SetHTMLHeader($headerHtml, '', true);
-            $mpdf->SetFooter('{PAGENO} / {nb}');
-            $mpdf->WriteHTML($html);
-
-            $filename = 'payment_followup_establishment_' . now()->format('Y-m-d_His') . '.pdf';
-
-            return response()->make($mpdf->Output('', 'S'), 200, [
-                'Content-Type'        => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . $filename . '"',
-                'Cache-Control'       => 'public, max-age=0',
-            ]);
+            return $this->renderPdfResponse($blocks, $untagged, $currentYear);
         } catch (\Throwable $e) {
             return response()->json([
                 'code'    => 500,
@@ -174,32 +195,101 @@ class PaymentFollowupPdfController extends Controller
     }
 
     /**
-     * @return array<int, string>
+     * @param \Illuminate\Support\Collection<int, object> $rows
+     * @return array<int|string, array<string, int>>
      */
-    private function distinctSabeelYearsSorted(): array
+    private function nestEstSabeelByYear($rows): array
     {
-        $a = EstablishmentSabeelModel::query()->distinct()->pluck('year')->filter()->all();
-        $b = MumineenSabeelModel::query()->distinct()->pluck('year')->filter()->all();
-        $merged = array_values(array_unique(array_merge(
-            array_map('strval', $a),
-            array_map('strval', $b)
-        )));
-        sort($merged, SORT_STRING);
+        $out = [];
+        foreach ($rows as $row) {
+            $eid = $row->establishment_id;
+            $y = (string) $row->year;
+            if (!isset($out[$eid])) {
+                $out[$eid] = [];
+            }
+            $out[$eid][$y] = (int) $row->sabeel;
+        }
 
-        return $merged;
+        return $out;
     }
 
     /**
-     * @param array<int, array{year: string, sabeel: int, paid: float, due: float}> $byYear
+     * @param \Illuminate\Support\Collection<int, object> $rows
+     * @return array<int|string, array<string, float>>
      */
-    private function buildYearDueLines(array $byYear, string $currentYear, float $currentYearEffectiveDue): string
+    private function nestPaidByYear($rows): array
     {
+        $out = [];
+        foreach ($rows as $row) {
+            $eid = $row->establishment_id;
+            $y = (string) $row->year;
+            if (!isset($out[$eid])) {
+                $out[$eid] = [];
+            }
+            $out[$eid][$y] = (float) $row->paid;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object> $rows
+     * @return array<int, array<string, int>>
+     */
+    private function nestFamSabeelByYear($rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $fid = (int) $row->family_id;
+            $y = (string) $row->year;
+            if (!isset($out[$fid])) {
+                $out[$fid] = [];
+            }
+            $out[$fid][$y] = (int) $row->sabeel;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, object> $rows
+     * @return array<int, array<string, float>>
+     */
+    private function nestFamilyPaidByYear($rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $fid = (int) $row->family_id;
+            $y = (string) $row->year;
+            if (!isset($out[$fid])) {
+                $out[$fid] = [];
+            }
+            $out[$fid][$y] = (float) $row->paid;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, int>   $sabeelByYear
+     * @param array<string, float> $paidByYear
+     */
+    private function buildDueLinesFromMaps(
+        array $yearsList,
+        string $currentYear,
+        float $currentYearEffectiveDue,
+        array $sabeelByYear,
+        array $paidByYear
+    ): string {
         $lines = [];
-        foreach ($byYear as $row) {
-            $y = (string) $row['year'];
-            $due = ($y === $currentYear) ? $currentYearEffectiveDue : (float) $row['due'];
+        foreach ($yearsList as $y) {
+            $year = (string) $y;
+            $sabeel = (int) ($sabeelByYear[$year] ?? 0);
+            $paid = (float) ($paidByYear[$year] ?? 0);
+            $rawDue = max(0.0, $sabeel - $paid);
+            $due = ($year === $currentYear) ? $currentYearEffectiveDue : $rawDue;
             if ($due > 0.005) {
-                $lines[] = $y . ': Rs. ' . number_format($due, 2);
+                $lines[] = $year . ': Rs. ' . number_format($due, 2);
             }
         }
         if ($lines === []) {
@@ -207,6 +297,98 @@ class PaymentFollowupPdfController extends Controller
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Latest active receipt per entity (one query for keys + one to hydrate).
+     *
+     * @param 'establishment_id'|'family_id' $column
+     * @param array<int|string>              $ids
+     * @return array<int|string, ReceiptModel|null>
+     */
+    private function lastReceiptIdsKeyed(string $column, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $idList = array_values(array_unique($ids));
+        $placeholders = implode(',', array_fill(0, count($idList), '?'));
+
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'mysql') {
+            $sql = "
+                SELECT t.{$column} AS entity_id, MAX(t.id) AS last_id
+                FROM t_receipts t
+                INNER JOIN (
+                    SELECT {$column}, MAX(`date`) AS md
+                    FROM t_receipts
+                    WHERE status = 'active' AND {$column} IS NOT NULL
+                      AND {$column} IN ({$placeholders})
+                    GROUP BY {$column}
+                ) x ON x.{$column} = t.{$column} AND t.`date` = x.md AND t.status = 'active'
+                GROUP BY t.{$column}
+            ";
+            $rows = DB::select($sql, $idList);
+        } else {
+            $sql = "
+                SELECT {$column} AS entity_id, MAX(id) AS last_id
+                FROM t_receipts
+                WHERE status = 'active' AND {$column} IS NOT NULL
+                  AND {$column} IN ({$placeholders})
+                GROUP BY {$column}
+            ";
+            $rows = DB::select($sql, $idList);
+        }
+
+        $idMap = [];
+        foreach ($rows as $row) {
+            $idMap[(int) $row->last_id] = true;
+        }
+        if ($idMap === []) {
+            return [];
+        }
+
+        $receipts = ReceiptModel::query()
+            ->whereIn('id', array_keys($idMap))
+            ->get()
+            ->keyBy('id');
+
+        $out = [];
+        foreach ($rows as $row) {
+            $rec = $receipts->get((int) $row->last_id);
+            $entityId = $row->entity_id;
+            if ($column === 'establishment_id') {
+                $out[$entityId] = $rec;
+                if (is_numeric($entityId)) {
+                    $out[(int) $entityId] = $rec;
+                }
+            } else {
+                $out[(int) $entityId] = $rec;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function distinctSabeelYearsSorted(): array
+    {
+        $rows = DB::select('
+            SELECT DISTINCT year FROM t_establishment_sabeel WHERE year IS NOT NULL AND year != \'\'
+            UNION
+            SELECT DISTINCT year FROM t_mumineen_sabeel WHERE year IS NOT NULL AND year != \'\'
+        ');
+        $merged = [];
+        foreach ($rows as $row) {
+            $merged[] = (string) $row->year;
+        }
+        $merged = array_values(array_unique($merged));
+        sort($merged, SORT_STRING);
+
+        return $merged;
     }
 
     private function formatLastPayment(?ReceiptModel $r): string
@@ -217,5 +399,56 @@ class PaymentFollowupPdfController extends Controller
         $d = $r->date ? $r->date->format('d-m-Y') : '';
 
         return 'Rs. ' . number_format((float) $r->amount, 2) . ' | ' . $d . ' | ' . ($r->mode ?? '');
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $blocks
+     * @param array<int, array<string, mixed>> $untagged
+     */
+    private function renderPdfResponse(array $blocks, array $untagged, string $currentYear)
+    {
+        $generatedAt = now()->format('d-m-Y H:i:s');
+        $title = 'Payment follow-up (establishment-wise)';
+
+        $html = view('payment_followup_establishment_pdf', [
+            'title'       => $title,
+            'currentYear' => $currentYear,
+            'generatedAt' => $generatedAt,
+            'blocks'      => $blocks,
+            'untagged'    => $untagged,
+        ])->render();
+
+        $mpdf = new Mpdf([
+            'mode'          => 'utf-8',
+            'format'        => 'A4-L',
+            'orientation'   => 'L',
+            'margin_left'   => 8,
+            'margin_right'  => 8,
+            'margin_top'    => 22,
+            'margin_bottom' => 12,
+            'margin_header' => 6,
+        ]);
+
+        $headerHtml = '<table style="width:100%;font-size:9px;border-bottom:1px solid #333;margin-bottom:4px;"><tr>'
+            . '<td style="text-align:left;font-weight:bold;">' . htmlspecialchars($title) . '</td>'
+            . '<td style="text-align:right;">Generated: ' . htmlspecialchars($generatedAt) . '</td>'
+            . '</tr></table>';
+
+        $mpdf->SetHTMLHeader($headerHtml, '', true);
+        $mpdf->SetFooter('{PAGENO} / {nb}');
+        $mpdf->WriteHTML($html);
+
+        $filename = 'payment_followup_establishment_' . now()->format('Y-m-d_His') . '.pdf';
+
+        return response()->make($mpdf->Output('', 'S'), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'Cache-Control'       => 'public, max-age=0',
+        ]);
+    }
+
+    private function emptyPdfResponse()
+    {
+        return $this->renderPdfResponse([], [], app(DueCalculationService::class)->getCurrentYear());
     }
 }
