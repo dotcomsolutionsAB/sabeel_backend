@@ -424,7 +424,7 @@ class PaymentFollowupPdfController extends Controller
         return $out;
     }
 
-    /** Compact last payment for narrow PDF column (stacked lines). */
+    /** Single-line last payment to keep PDF row height minimal. */
     private function formatLastPaymentCompact(?ReceiptModel $r): string
     {
         if (!$r) {
@@ -432,9 +432,9 @@ class PaymentFollowupPdfController extends Controller
         }
         $d = $r->date ? $r->date->format('d-m-y') : '';
         $amt = number_format((float) $r->amount, 0);
-        $mode = $r->mode ?? '';
+        $mode = trim((string) ($r->mode ?? ''));
 
-        return $amt . "\n" . $d . "\n" . $mode;
+        return $amt . ' / ' . $d . ($mode !== '' ? ' / ' . $mode : '');
     }
 
     /**
@@ -463,12 +463,12 @@ class PaymentFollowupPdfController extends Controller
             'orientation'   => 'L',
             'margin_left'   => 8,
             'margin_right'  => 8,
-            'margin_top'    => 22,
-            'margin_bottom' => 12,
-            'margin_header' => 6,
+            'margin_top'    => 18,
+            'margin_bottom' => 10,
+            'margin_header' => 5,
         ]);
 
-        $headerHtml = '<table style="width:100%;font-size:9px;border-bottom:1px solid #333;margin-bottom:4px;"><tr>'
+        $headerHtml = '<table style="width:100%;font-size:8px;border-bottom:1px solid #333;margin-bottom:2px;"><tr>'
             . '<td style="text-align:left;font-weight:bold;">' . htmlspecialchars($title) . '</td>'
             . '<td style="text-align:right;">Generated: ' . htmlspecialchars($generatedAt) . '</td>'
             . '</tr></table>';
@@ -539,7 +539,7 @@ class PaymentFollowupPdfController extends Controller
                 'startSn'     => $rowSn,
             ])->render();
             foreach ($chunk as $b) {
-                $rowSn += 1 + count($b['partners'] ?? []);
+                $rowSn += 1;
             }
             $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY, $bodyInit, false);
             $bodyInit = false;

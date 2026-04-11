@@ -1,78 +1,104 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: DejaVu Sans, Arial, sans-serif;
-    font-size: 10px;
+    font-size: 8.5px;
     color: #111;
-    line-height: 1.35;
+    line-height: 1.15;
 }
 .doc-title {
     text-align: center;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: bold;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+    line-height: 1.2;
 }
 .meta {
     text-align: center;
-    font-size: 10px;
+    font-size: 8px;
     color: #444;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
+    line-height: 1.2;
 }
 table.main {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     table-layout: fixed;
 }
 table.main th {
     background: #e8e8e8;
     border: 1px solid #333;
-    padding: 6px 3px;
+    padding: 2px 3px;
     text-align: left;
-    font-size: 9px;
+    font-size: 7.5px;
     font-weight: bold;
-    vertical-align: bottom;
+    vertical-align: middle;
     word-wrap: break-word;
+    line-height: 1.15;
 }
 table.main td {
     border: 1px solid #333;
-    padding: 5px 3px;
-    vertical-align: top;
-    font-size: 9.5px;
+    padding: 1px 3px;
+    vertical-align: middle;
+    font-size: 8px;
+    line-height: 1.12;
 }
 .col-sn {
-    width: 3.5%;
+    width: 2.2%;
     text-align: center;
 }
-.col-name { width: 14%; }
-.col-hub { width: 6.5%; text-align: right; }
-.col-year {
+.col-name {
+    width: 38%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+.col-hub {
+    width: 5%;
     text-align: right;
-    font-size: 8.5px;
-    padding: 4px 2px !important;
+    white-space: nowrap;
+}
+.col-year {
+    width: 5.8%;
+    text-align: right;
+    font-size: 7.5px;
+    padding: 1px 2px !important;
+    white-space: nowrap;
 }
 .col-last {
-    width: 7%;
-    font-size: 7.5px;
-    line-height: 1.25;
-    white-space: pre-line;
+    width: 12%;
+    font-size: 7px;
+    line-height: 1.1;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
-th.col-sn, th.col-hub, th.col-year { text-align: center; }
-th.col-year { font-size: 8px; }
+th.col-sn, th.col-hub { text-align: center; }
+th.col-year {
+    text-align: center;
+    font-size: 7px;
+    padding: 2px 2px !important;
+}
+th.col-last { text-align: center; }
 tr.est-row td {
     background: #f0f7ff;
     font-weight: bold;
 }
+tr.est-row td.col-name {
+    font-size: 8px;
+}
 tr.partner-row td {
-    padding-left: 8px;
+    padding: 1px 3px 1px 5px;
     background: #fafafa;
     font-weight: normal;
 }
-tr.partner-row .col-name { font-style: italic; }
+tr.partner-row .col-name {
+    font-style: italic;
+    font-size: 7.5px;
+}
 .section-title {
-    margin: 18px 0 8px 0;
-    font-size: 12px;
+    margin: 10px 0 5px 0;
+    font-size: 10px;
     font-weight: bold;
-    border-bottom: 2px solid #333;
-    padding-bottom: 4px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 2px;
+    line-height: 1.2;
 }

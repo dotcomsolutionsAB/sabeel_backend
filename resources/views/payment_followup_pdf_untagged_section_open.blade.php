@@ -6,11 +6,11 @@
         <tr>
             <th class="col-sn">SN</th>
             <th class="col-name">Family (HOF)</th>
-            <th class="col-hub">Hub<br/>({{ $currentYear }})</th>
+            <th class="col-hub">Hub ({{ $currentYear }})</th>
             @foreach ($reportYears as $yr)
-                <th class="col-year">Due<br/>{{ $reportYearLabels[$yr] ?? $yr }}</th>
+                <th class="col-year">Due {{ $reportYearLabels[$yr] ?? $yr }}</th>
             @endforeach
-            <th class="col-last">Last payment<br/><span style="font-weight:normal;font-size:7px;">Amt / date / mode</span></th>
+            <th class="col-last">Last payment <span style="font-weight:normal;">(amt / date / mode)</span></th>
         </tr>
     </thead>
     <tbody>

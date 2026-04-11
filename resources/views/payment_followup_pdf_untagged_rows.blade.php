@@ -12,7 +12,7 @@
             @foreach ($reportYears as $i => $yr)
                 <td class="col-year">{{ $u['due_cells'][$i] ?? '—' }}</td>
             @endforeach
-            <td class="col-last">{!! nl2br(e($u['last_pay'])) !!}</td>
+            <td class="col-last">{{ $u['last_pay'] }}</td>
         </tr>
     @endforeach
 @endif
