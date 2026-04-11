@@ -14,6 +14,7 @@ class SabeelSlabReportController extends Controller
     /**
      * Breakdown of families or establishments grouped by yearly sabeel slab for a year.
      * Categories A, B, … assigned highest slab to A (then AA, AB, … beyond Z).
+     * For personal, total_amount = count × monthly_sabeel (monthly-scale total).
      *
      * POST /sabeel/slab-breakdown
      * Body: { "year": "2025-26", "type": "personal" | "establishment" | "family" }
@@ -58,11 +59,14 @@ class SabeelSlabReportController extends Controller
                 $monthlySabeel = $isPersonal
                     ? (int) round($yearly / 12.0)
                     : $yearly;
+                $totalAmount = $isPersonal
+                    ? $count * $monthlySabeel
+                    : $count * $yearly;
                 $items[] = [
                     'category'       => $this->categoryLabel($index),
                     'monthly_sabeel' => $monthlySabeel,
                     'count'          => $count,
-                    'total_amount'   => $count * $yearly,
+                    'total_amount'   => $totalAmount,
                 ];
                 $index++;
             }
