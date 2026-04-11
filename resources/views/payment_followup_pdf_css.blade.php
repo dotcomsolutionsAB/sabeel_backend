@@ -3,7 +3,7 @@ body {
     font-family: DejaVu Sans, Arial, sans-serif;
     font-size: 8.5px;
     color: #111;
-    line-height: 1.15;
+    line-height: 1.2;
 }
 .doc-title {
     text-align: center;
@@ -22,26 +22,26 @@ body {
 table.main {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     table-layout: fixed;
 }
 table.main th {
     background: #e8e8e8;
     border: 1px solid #333;
-    padding: 2px 3px;
+    padding: 4px 4px;
     text-align: left;
     font-size: 7.5px;
     font-weight: bold;
     vertical-align: middle;
     word-wrap: break-word;
-    line-height: 1.15;
+    line-height: 1.2;
 }
 table.main td {
     border: 1px solid #333;
-    padding: 1px 3px;
+    padding: 3px 4px;
     vertical-align: middle;
     font-size: 8px;
-    line-height: 1.12;
+    line-height: 1.18;
 }
 .col-sn {
     width: 2.2%;
@@ -61,13 +61,13 @@ table.main td {
     width: 5.8%;
     text-align: right;
     font-size: 7.5px;
-    padding: 1px 2px !important;
+    padding: 2px 3px !important;
     white-space: nowrap;
 }
 .col-last {
     width: 12%;
     font-size: 7px;
-    line-height: 1.1;
+    line-height: 1.15;
     word-wrap: break-word;
     overflow-wrap: anywhere;
 }
@@ -75,7 +75,7 @@ th.col-sn, th.col-hub { text-align: center; }
 th.col-year {
     text-align: center;
     font-size: 7px;
-    padding: 2px 2px !important;
+    padding: 4px 3px !important;
 }
 th.col-last { text-align: center; }
 tr.est-row td {
@@ -86,7 +86,7 @@ tr.est-row td.col-name {
     font-size: 8px;
 }
 tr.partner-row td {
-    padding: 1px 3px 1px 5px;
+    padding: 3px 4px 3px 6px;
     background: #fafafa;
     font-weight: normal;
 }
