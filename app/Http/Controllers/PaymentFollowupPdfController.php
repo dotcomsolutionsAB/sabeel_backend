@@ -468,7 +468,7 @@ class PaymentFollowupPdfController extends Controller
             'margin_header' => 5,
         ]);
 
-        $headerHtml = '<table style="width:100%;font-size:8px;border-bottom:1px solid #333;margin-bottom:2px;"><tr>'
+        $headerHtml = '<table style="width:100%;font-size:9px;border-bottom:1px solid #333;margin-bottom:2px;"><tr>'
             . '<td style="text-align:left;font-weight:bold;">' . htmlspecialchars($title) . '</td>'
             . '<td style="text-align:right;">Generated: ' . htmlspecialchars($generatedAt) . '</td>'
             . '</tr></table>';
