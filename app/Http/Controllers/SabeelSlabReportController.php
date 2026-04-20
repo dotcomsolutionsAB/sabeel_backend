@@ -77,10 +77,11 @@ class SabeelSlabReportController extends Controller
                     ? $count * $monthlySabeel
                     : $count * $yearly;
                 $items[] = [
-                    'category'       => $this->categoryLabel($index),
-                    'monthly_sabeel' => $monthlySabeel,
-                    'count'          => $count,
-                    'total_amount'   => $totalAmount,
+                    'category'        => $this->categoryLabel($index),
+                    'yearly_sabeel'   => $yearly,
+                    'monthly_sabeel'  => $monthlySabeel,
+                    'count'           => $count,
+                    'total_amount'    => $totalAmount,
                 ];
                 $index++;
             }
@@ -123,6 +124,131 @@ class SabeelSlabReportController extends Controller
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sabeel slab breakdown failed');
         }
+    }
+
+    /**
+     * Rows in a single slab from {@see breakdown()} for popup detail.
+     * GET or POST /sabeel/slab-detail
+     * Input (JSON body and/or query string; body wins on duplicate keys):
+     *  - year (required): sabeel year, e.g. "2025-26". Aliases: sabeel_year, sabeelYear, financial_year
+     *  - type: personal | establishment | family (required)
+     *  - slab (required, int): establishment = yearly sabeel; personal = monthly slab (round(yearly/12)) unless yearly_sabeel is sent
+     *  - yearly_sabeel (optional, int): personal only — exact yearly amount from breakdown row (preferred when set)
+     */
+    public function slabDetail(Request $request)
+    {
+        try {
+            $payload = $this->slabDetailPayload($request);
+
+            $validator = Validator::make($payload, [
+                'year'            => 'required|string|max:10',
+                'type'            => 'required|string|in:personal,establishment,family',
+                'slab'            => 'required|numeric|min:0',
+                'yearly_sabeel'   => 'nullable|numeric|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validation($validator);
+            }
+
+            $year = trim((string) $payload['year']);
+            $type = strtolower(trim((string) ($payload['type'] ?? '')));
+            $isPersonal = in_array($type, ['personal', 'family'], true);
+            $slab = (int) round((float) ($payload['slab'] ?? 0));
+            $yearlyExact = $payload['yearly_sabeel'] ?? null;
+            $yearlyExact = $yearlyExact !== null && $yearlyExact !== '' ? (int) round((float) $yearlyExact) : null;
+
+            if ($isPersonal) {
+                $q = DB::table('t_mumineen_sabeel as ms')
+                    ->join('t_mumineen as m', function ($join) {
+                        $join->on('m.family_id', '=', 'ms.family_id')
+                            ->where('m.hof_type', 'HOF')
+                            ->where('m.status', 'active');
+                    })
+                    ->where('ms.year', $year);
+
+                if ($yearlyExact !== null) {
+                    $q->where('ms.sabeel', $yearlyExact);
+                } else {
+                    $q->whereRaw('ROUND(ms.sabeel / 12.0) = ?', [$slab]);
+                }
+
+                $rows = $q->orderBy('m.name')
+                    ->select(
+                        'm.family_id',
+                        'm.name',
+                        'm.its',
+                        'ms.sabeel as yearly_sabeel'
+                    )
+                    ->get();
+
+                $list = $rows->map(function ($r) {
+                    $y = (int) $r->yearly_sabeel;
+
+                    return [
+                        'family_id'       => (int) $r->family_id,
+                        'name'           => (string) $r->name,
+                        'its'            => $r->its !== null ? (string) $r->its : '',
+                        'yearly_sabeel'  => $y,
+                        'monthly_sabeel' => (int) round($y / 12.0),
+                    ];
+                })->values()->all();
+            } else {
+                $rows = DB::table('t_establishment_sabeel as es')
+                    ->join('t_establishment as e', function ($join) {
+                        $join->on('e.establishment_id', '=', 'es.establishment_id')
+                            ->where('e.status', 'active');
+                    })
+                    ->where('es.year', $year)
+                    ->where('es.sabeel', $slab)
+                    ->orderBy('e.name')
+                    ->select(
+                        'e.establishment_id',
+                        'e.name',
+                        'es.sabeel as yearly_sabeel'
+                    )
+                    ->get();
+
+                $list = $rows->map(fn ($r) => [
+                    'establishment_id' => $r->establishment_id,
+                    'name'             => (string) $r->name,
+                    'yearly_sabeel'    => (int) $r->yearly_sabeel,
+                ])->values()->all();
+            }
+
+            return $this->success('Sabeel slab detail', [
+                'year'           => $year,
+                'type'           => $isPersonal ? 'personal' : 'establishment',
+                'slab'           => $slab,
+                'yearly_sabeel'  => $yearlyExact,
+                'count'          => count($list),
+                'items'          => $list,
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Sabeel slab detail failed');
+        }
+    }
+
+    /**
+     * Merge query + body and resolve year from common frontend keys.
+     *
+     * @return array<string, mixed>
+     */
+    private function slabDetailPayload(Request $request): array
+    {
+        $data = array_merge($request->query(), $request->all());
+
+        $yearMissing = !isset($data['year']) || $data['year'] === '' || $data['year'] === null;
+        if ($yearMissing) {
+            foreach (['sabeel_year', 'sabeelYear', 'financial_year'] as $alt) {
+                if (isset($data[$alt]) && $data[$alt] !== '' && $data[$alt] !== null) {
+                    $data['year'] = $data[$alt];
+                    break;
+                }
+            }
+        }
+
+        return $data;
     }
 
     /**

@@ -27,6 +27,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
     Route::post('/sabeel/slab-breakdown', [SabeelSlabReportController::class, 'breakdown']);
+    Route::match(['get', 'post'], '/sabeel/slab-detail', [SabeelSlabReportController::class, 'slabDetail']);
 
     // dashboard route
     Route::prefix('dashboard')->group(function () {
