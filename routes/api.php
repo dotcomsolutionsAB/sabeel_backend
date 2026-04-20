@@ -18,6 +18,7 @@ use App\Http\Controllers\MigrateController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\SabeelSlabReportController;
+use App\Http\Controllers\EstablishmentSlabGroupController;
 use App\Http\Controllers\PaymentFollowupPdfController;
 
 Route::post('/register', [UserController::class, 'create']);
@@ -28,6 +29,13 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
 
     Route::post('/sabeel/slab-breakdown', [SabeelSlabReportController::class, 'breakdown']);
     Route::match(['get', 'post'], '/sabeel/slab-detail', [SabeelSlabReportController::class, 'slabDetail']);
+
+    Route::prefix('establishment/slab-group')->group(function () {
+        Route::post('/list', [EstablishmentSlabGroupController::class, 'list']);
+        Route::post('/create', [EstablishmentSlabGroupController::class, 'create']);
+        Route::post('/update/{id}', [EstablishmentSlabGroupController::class, 'update']);
+        Route::post('/delete/{id}', [EstablishmentSlabGroupController::class, 'delete']);
+    });
 
     // dashboard route
     Route::prefix('dashboard')->group(function () {

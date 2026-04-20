@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\GenericExcelExport;
 use App\Helpers\ExcelExportHelper;
+use App\Services\EstablishmentSlabAggregationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,15 +22,23 @@ class SabeelSlabReportController extends Controller
      * Only active families (HOF status active) and active establishments are included.
      *
      * POST /sabeel/slab-breakdown
-     * Body: { "year": "2025-26", "type": "personal" | "establishment" | "family", "export_excel": true }
+     * Body: {
+     *   "year": "2025-26",
+     *   "type": "personal" | "establishment" | "family",
+     *   "export_excel": true,
+     *   "merge_establishment_groups": false
+     * }
+     * When type is establishment and merge_establishment_groups is true, counts and yearly buckets use
+     * merged slab groups (sum of yearly sabeel per primary establishment). Default false (unchanged behaviour).
      */
     public function breakdown(Request $request)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'year'         => 'required|string|max:10',
-                'type'         => 'required|string|in:personal,establishment,family',
-                'export_excel' => 'nullable|boolean',
+                'year'                         => 'required|string|max:10',
+                'type'                         => 'required|string|in:personal,establishment,family',
+                'export_excel'                 => 'nullable|boolean',
+                'merge_establishment_groups'   => 'nullable|boolean',
             ]);
 
             if ($validator->fails()) {
@@ -39,6 +48,7 @@ class SabeelSlabReportController extends Controller
             $year = trim((string) $request->input('year'));
             $type = strtolower(trim((string) $request->input('type')));
             $isPersonal = in_array($type, ['personal', 'family'], true);
+            $mergeEstablishmentGroups = $request->boolean('merge_establishment_groups', false);
 
             if ($isPersonal) {
                 $rows = DB::table('t_mumineen_sabeel as ms')
@@ -53,16 +63,8 @@ class SabeelSlabReportController extends Controller
                     ->orderByDesc('ms.sabeel')
                     ->get();
             } else {
-                $rows = DB::table('t_establishment_sabeel as es')
-                    ->join('t_establishment as e', function ($join) {
-                        $join->on('e.establishment_id', '=', 'es.establishment_id')
-                            ->where('e.status', 'active');
-                    })
-                    ->where('es.year', $year)
-                    ->select('es.sabeel', DB::raw('COUNT(DISTINCT es.establishment_id) as cnt'))
-                    ->groupBy('es.sabeel')
-                    ->orderByDesc('es.sabeel')
-                    ->get();
+                $rows = app(EstablishmentSlabAggregationService::class)
+                    ->establishmentBreakdownRows($year, $mergeEstablishmentGroups);
             }
 
             $items = [];
@@ -117,9 +119,10 @@ class SabeelSlabReportController extends Controller
             }
 
             return $this->success('Sabeel slab breakdown', [
-                'year' => $year,
-                'type' => $isPersonal ? 'personal' : 'establishment',
-                'items' => $items,
+                'year'                         => $year,
+                'type'                         => $isPersonal ? 'personal' : 'establishment',
+                'merge_establishment_groups'   => !$isPersonal && $mergeEstablishmentGroups,
+                'items'                        => $items,
             ], 200);
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sabeel slab breakdown failed');
@@ -133,7 +136,8 @@ class SabeelSlabReportController extends Controller
      *  - year (required): sabeel year, e.g. "2025-26". Aliases: sabeel_year, sabeelYear, financial_year
      *  - type: personal | establishment | family (required)
      *  - slab (required, int): establishment = yearly sabeel; personal = monthly slab (round(yearly/12)) unless yearly_sabeel is sent
-     *  - yearly_sabeel (optional, int): personal only — exact yearly amount from breakdown row (preferred when set)
+     *  - yearly_sabeel (optional, int): personal — exact yearly from row; establishment + merge — combined yearly from row
+     *  - merge_establishment_groups (optional, bool): must match breakdown; establishment only; default false
      */
     public function slabDetail(Request $request)
     {
@@ -141,10 +145,11 @@ class SabeelSlabReportController extends Controller
             $payload = $this->slabDetailPayload($request);
 
             $validator = Validator::make($payload, [
-                'year'            => 'required|string|max:10',
-                'type'            => 'required|string|in:personal,establishment,family',
-                'slab'            => 'required|numeric|min:0',
-                'yearly_sabeel'   => 'nullable|numeric|min:0',
+                'year'                         => 'required|string|max:10',
+                'type'                         => 'required|string|in:personal,establishment,family',
+                'slab'                         => 'required|numeric|min:0',
+                'yearly_sabeel'                => 'nullable|numeric|min:0',
+                'merge_establishment_groups'   => 'nullable|boolean',
             ]);
 
             if ($validator->fails()) {
@@ -157,6 +162,7 @@ class SabeelSlabReportController extends Controller
             $slab = (int) round((float) ($payload['slab'] ?? 0));
             $yearlyExact = $payload['yearly_sabeel'] ?? null;
             $yearlyExact = $yearlyExact !== null && $yearlyExact !== '' ? (int) round((float) $yearlyExact) : null;
+            $mergeEstablishmentGroups = filter_var($payload['merge_establishment_groups'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             if ($isPersonal) {
                 $q = DB::table('t_mumineen_sabeel as ms')
@@ -194,35 +200,22 @@ class SabeelSlabReportController extends Controller
                     ];
                 })->values()->all();
             } else {
-                $rows = DB::table('t_establishment_sabeel as es')
-                    ->join('t_establishment as e', function ($join) {
-                        $join->on('e.establishment_id', '=', 'es.establishment_id')
-                            ->where('e.status', 'active');
-                    })
-                    ->where('es.year', $year)
-                    ->where('es.sabeel', $slab)
-                    ->orderBy('e.name')
-                    ->select(
-                        'e.establishment_id',
-                        'e.name',
-                        'es.sabeel as yearly_sabeel'
-                    )
-                    ->get();
-
-                $list = $rows->map(fn ($r) => [
-                    'establishment_id' => $r->establishment_id,
-                    'name'             => (string) $r->name,
-                    'yearly_sabeel'    => (int) $r->yearly_sabeel,
-                ])->values()->all();
+                $list = app(EstablishmentSlabAggregationService::class)->establishmentSlabDetailItems(
+                    $year,
+                    $slab,
+                    $yearlyExact,
+                    $mergeEstablishmentGroups
+                );
             }
 
             return $this->success('Sabeel slab detail', [
-                'year'           => $year,
-                'type'           => $isPersonal ? 'personal' : 'establishment',
-                'slab'           => $slab,
-                'yearly_sabeel'  => $yearlyExact,
-                'count'          => count($list),
-                'items'          => $list,
+                'year'                         => $year,
+                'type'                         => $isPersonal ? 'personal' : 'establishment',
+                'slab'                         => $slab,
+                'yearly_sabeel'                => $yearlyExact,
+                'merge_establishment_groups'   => !$isPersonal && $mergeEstablishmentGroups,
+                'count'                        => count($list),
+                'items'                        => $list,
             ], 200);
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sabeel slab detail failed');
