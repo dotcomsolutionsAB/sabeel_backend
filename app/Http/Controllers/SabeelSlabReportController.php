@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\GenericExcelExport;
 use App\Helpers\ExcelExportHelper;
+use App\Models\EstablishmentSlabGroupModel;
 use App\Services\EstablishmentSlabAggregationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -26,10 +27,10 @@ class SabeelSlabReportController extends Controller
      *   "year": "2025-26",
      *   "type": "personal" | "establishment" | "family",
      *   "export_excel": true,
-     *   "merge_establishment_groups": false
+     *   "merge_establishment_groups": true
      * }
-     * When type is establishment and merge_establishment_groups is true, counts and yearly buckets use
-     * merged slab groups (sum of yearly sabeel per primary establishment). Default false (unchanged behaviour).
+     * Establishment: if merge_establishment_groups is omitted, it defaults to true when at least one active
+     * slab merge group exists, otherwise false. Pass false explicitly to always use per-establishment buckets.
      */
     public function breakdown(Request $request)
     {
@@ -48,7 +49,7 @@ class SabeelSlabReportController extends Controller
             $year = trim((string) $request->input('year'));
             $type = strtolower(trim((string) $request->input('type')));
             $isPersonal = in_array($type, ['personal', 'family'], true);
-            $mergeEstablishmentGroups = $request->boolean('merge_establishment_groups', false);
+            $mergeEstablishmentGroups = $this->resolveMergeEstablishmentGroupsForBreakdown($request, $isPersonal);
 
             if ($isPersonal) {
                 $rows = DB::table('t_mumineen_sabeel as ms')
@@ -137,7 +138,7 @@ class SabeelSlabReportController extends Controller
      *  - type: personal | establishment | family (required)
      *  - slab (required, int): establishment = yearly sabeel; personal = monthly slab (round(yearly/12)) unless yearly_sabeel is sent
      *  - yearly_sabeel (optional, int): personal — exact yearly from row; establishment + merge — combined yearly from row
-     *  - merge_establishment_groups (optional, bool): must match breakdown; establishment only; default false
+     *  - merge_establishment_groups (optional, bool): establishment only; same default as slab-breakdown when omitted.
      */
     public function slabDetail(Request $request)
     {
@@ -162,7 +163,7 @@ class SabeelSlabReportController extends Controller
             $slab = (int) round((float) ($payload['slab'] ?? 0));
             $yearlyExact = $payload['yearly_sabeel'] ?? null;
             $yearlyExact = $yearlyExact !== null && $yearlyExact !== '' ? (int) round((float) $yearlyExact) : null;
-            $mergeEstablishmentGroups = filter_var($payload['merge_establishment_groups'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $mergeEstablishmentGroups = $this->resolveMergeEstablishmentGroupsFromPayload($payload, $isPersonal);
 
             if ($isPersonal) {
                 $q = DB::table('t_mumineen_sabeel as ms')
@@ -220,6 +221,35 @@ class SabeelSlabReportController extends Controller
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Sabeel slab detail failed');
         }
+    }
+
+    private function resolveMergeEstablishmentGroupsForBreakdown(Request $request, bool $isPersonal): bool
+    {
+        if ($isPersonal) {
+            return false;
+        }
+        if ($request->exists('merge_establishment_groups')) {
+            return $request->boolean('merge_establishment_groups');
+        }
+
+        return EstablishmentSlabGroupModel::query()->where('is_active', true)->exists();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function resolveMergeEstablishmentGroupsFromPayload(array $payload, bool $isPersonal): bool
+    {
+        if ($isPersonal) {
+            return false;
+        }
+        if (array_key_exists('merge_establishment_groups', $payload)
+            && $payload['merge_establishment_groups'] !== null
+            && $payload['merge_establishment_groups'] !== '') {
+            return filter_var($payload['merge_establishment_groups'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return EstablishmentSlabGroupModel::query()->where('is_active', true)->exists();
     }
 
     /**
