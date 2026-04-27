@@ -1,6 +1,6 @@
 @php $sn = $startSn; @endphp
 @foreach ($blocks as $block)
-    <tr class="est-row">
+    <tr class="est-row {{ !($block['is_takhmeen_updated'] ?? false) ? 'not-updated' : '' }}">
         <td class="col-sn">{{ $sn++ }}</td>
         <td class="col-name">{{ $block['establishment_name'] }}</td>
         <td class="col-phone">{{ $block['phone'] ?? '—' }}</td>
@@ -11,7 +11,7 @@
         <td class="col-last">{{ $block['last_pay'] }}</td>
     </tr>
     @foreach ($block['partners'] as $p)
-        <tr class="partner-row">
+        <tr class="partner-row {{ !($p['is_takhmeen_updated'] ?? false) ? 'not-updated' : '' }}">
             <td class="col-sn"></td>
             <td class="col-name">{{ $p['label'] }}</td>
             <td class="col-phone">{{ $p['phone'] ?? '—' }}</td>

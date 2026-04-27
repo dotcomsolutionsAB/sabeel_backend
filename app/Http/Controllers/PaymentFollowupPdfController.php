@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Exports\GenericExcelExport;
+use App\Exports\PaymentFollowupExcelExport;
 use App\Helpers\ExcelExportHelper;
 use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
@@ -160,6 +160,7 @@ class PaymentFollowupPdfController extends Controller
                         'hub'         => (int) ($fRow['sabeel'] ?? 0),
                         'due_cells'   => $fDueCells,
                         'last_pay'    => $this->formatLastPaymentCompact($lastFam),
+                        'is_takhmeen_updated' => (bool) ($hof->is_takhmeen_updated ?? false),
                     ];
                 }
                 usort($partners, fn ($a, $b) => strcmp($a['label'], $b['label']));
@@ -172,6 +173,7 @@ class PaymentFollowupPdfController extends Controller
                     'hub'                => (int) ($eRow['sabeel'] ?? 0),
                     'due_cells'          => $dueCells,
                     'last_pay'           => $this->formatLastPaymentCompact($lastEst),
+                    'is_takhmeen_updated' => (bool) ($est->is_takhmeen_updated ?? false),
                     'partners'           => $partners,
                 ];
             }
@@ -196,6 +198,7 @@ class PaymentFollowupPdfController extends Controller
                     'hub'         => (int) ($fRow['sabeel'] ?? 0),
                     'due_cells'   => $fDueCells,
                     'last_pay'    => $this->formatLastPaymentCompact($lastFam),
+                    'is_takhmeen_updated' => (bool) ($hof->is_takhmeen_updated ?? false),
                 ];
             }
 
@@ -575,6 +578,8 @@ class PaymentFollowupPdfController extends Controller
         );
 
         $excelRows = [];
+        $highlightRows = [];
+        $excelRowNo = 2;
         $sn = 1;
         foreach ($blocks as $block) {
             $row = [
@@ -588,6 +593,10 @@ class PaymentFollowupPdfController extends Controller
             }
             $row[] = $block['last_pay'] ?? '—';
             $excelRows[] = $row;
+            if (!(bool) ($block['is_takhmeen_updated'] ?? false)) {
+                $highlightRows[] = $excelRowNo;
+            }
+            $excelRowNo++;
             $sn++;
 
             foreach ($block['partners'] ?? [] as $p) {
@@ -602,16 +611,22 @@ class PaymentFollowupPdfController extends Controller
                 }
                 $prow[] = $p['last_pay'] ?? '—';
                 $excelRows[] = $prow;
+                if (!(bool) ($p['is_takhmeen_updated'] ?? false)) {
+                    $highlightRows[] = $excelRowNo;
+                }
+                $excelRowNo++;
             }
         }
 
         if ($untagged !== []) {
             if ($blocks !== []) {
                 $excelRows[] = array_fill(0, count($headings), '');
+            $excelRowNo++;
             }
             $titleRow = array_fill(0, count($headings), '');
             $titleRow[1] = 'Families not linked to any establishment';
             $excelRows[] = $titleRow;
+            $excelRowNo++;
             $sn2 = 1;
             foreach ($untagged as $u) {
                 $urow = [
@@ -625,12 +640,17 @@ class PaymentFollowupPdfController extends Controller
                 }
                 $urow[] = $u['last_pay'] ?? '—';
                 $excelRows[] = $urow;
+                if (!(bool) ($u['is_takhmeen_updated'] ?? false)) {
+                    $highlightRows[] = $excelRowNo;
+                }
+                $excelRowNo++;
                 $sn2++;
             }
         } elseif ($blocks === [] && $untagged === []) {
             $msg = array_fill(0, count($headings), '');
             $msg[1] = 'No active establishments.';
             $excelRows[] = $msg;
+            $excelRowNo++;
         }
 
         $colCount = count($headings);
@@ -649,10 +669,11 @@ class PaymentFollowupPdfController extends Controller
         }
         $align[$lastLetter] = Alignment::HORIZONTAL_LEFT;
 
-        $export = new GenericExcelExport(
+        $export = new PaymentFollowupExcelExport(
             $excelRows,
             $headings,
-            $align
+            $align,
+            $highlightRows
         );
 
         return ExcelExportHelper::store($export, 'sabeel', 'payment_followup_establishment');

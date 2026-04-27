@@ -109,3 +109,7 @@ tr.partner-row .col-name {
     padding-bottom: 2px;
     line-height: 1.2;
 }
+
+tr.not-updated td {
+    background: #fde7e7 !important;
+}
