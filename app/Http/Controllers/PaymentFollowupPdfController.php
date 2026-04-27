@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\GenericExcelExport;
+use App\Helpers\ExcelExportHelper;
 use App\Models\EstablishmentModel;
 use App\Models\EstablishmentSabeelModel;
 use App\Models\MumineenEstablishmentModel;
@@ -10,10 +12,12 @@ use App\Models\MumineenSabeelModel;
 use App\Models\ReceiptModel;
 use App\Models\YearModel;
 use App\Services\DueCalculationService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class PaymentFollowupPdfController extends Controller
 {
@@ -23,13 +27,15 @@ class PaymentFollowupPdfController extends Controller
     /** Max untagged family rows per WriteHTML chunk. */
     private const PDF_UNTAGGED_CHUNK = 80;
     /**
-     * GET /establishment/payment-followup-pdf
-     * Bulk-loaded data only (avoids N+1 / gateway timeouts).
+     * GET|POST /establishment/payment-followup-pdf
+     * Query/body: type = excel|pdf. Omitted or invalid defaults to excel.
+     * Bulk-loaded data only (avoids N+1 / gateway timeouts). Includes HOF mobile as Phone.
      */
-    public function establishmentWisePdf()
+    public function establishmentWisePdf(Request $request)
     {
         set_time_limit(300);
         ini_set('memory_limit', '512M');
+        $outputType = $this->resolvePaymentFollowupOutputType($request);
 
         try {
             $dueService = app(DueCalculationService::class);
@@ -46,7 +52,7 @@ class PaymentFollowupPdfController extends Controller
                 ->get();
 
             if ($establishments->isEmpty()) {
-                return $this->emptyPdfResponse();
+                return $this->emptyPaymentFollowupResponse($outputType);
             }
 
             $estIds = $establishments->pluck('establishment_id')->unique()->values()->all();
@@ -150,6 +156,7 @@ class PaymentFollowupPdfController extends Controller
                     $lastFam = $lastReceiptByFam[$fid] ?? null;
                     $partners[] = [
                         'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
+                        'phone'      => $this->formatHofPhone($hof),
                         'hub'         => (int) ($fRow['sabeel'] ?? 0),
                         'due_cells'   => $fDueCells,
                         'last_pay'    => $this->formatLastPaymentCompact($lastFam),
@@ -157,8 +164,11 @@ class PaymentFollowupPdfController extends Controller
                 }
                 usort($partners, fn ($a, $b) => strcmp($a['label'], $b['label']));
 
+                $estPhone = $partners === [] ? '—' : ($partners[0]['phone'] ?? '—');
+
                 $blocks[] = [
                     'establishment_name' => $est->name,
+                    'phone'              => $estPhone,
                     'hub'                => (int) ($eRow['sabeel'] ?? 0),
                     'due_cells'          => $dueCells,
                     'last_pay'           => $this->formatLastPaymentCompact($lastEst),
@@ -182,10 +192,21 @@ class PaymentFollowupPdfController extends Controller
                 $lastFam = $lastReceiptByFam[$fid] ?? null;
                 $untagged[] = [
                     'label'       => $hof->name . ' (ITS ' . ($hof->its ?? '') . ')',
+                    'phone'       => $this->formatHofPhone($hof),
                     'hub'         => (int) ($fRow['sabeel'] ?? 0),
                     'due_cells'   => $fDueCells,
                     'last_pay'    => $this->formatLastPaymentCompact($lastFam),
                 ];
+            }
+
+            if ($outputType === 'excel') {
+                return $this->renderExcelResponse(
+                    $blocks,
+                    $untagged,
+                    $currentYear,
+                    $reportYears,
+                    $reportYearLabels
+                );
             }
 
             return $this->renderPdfResponse($blocks, $untagged, $currentYear, $reportYears, $reportYearLabels);
@@ -498,6 +519,143 @@ class PaymentFollowupPdfController extends Controller
         }
 
         return $this->renderPdfResponse([], [], $cur, $reportYears, $reportYearLabels);
+    }
+
+    private function emptyPaymentFollowupResponse(string $outputType)
+    {
+        if ($outputType === 'excel') {
+            $dueService = app(DueCalculationService::class);
+            $cur = $dueService->getCurrentYear();
+            $reportYears = $this->resolvePaymentFollowupThreeYears($cur);
+            $reportYearLabels = [];
+            foreach ($reportYears as $yr) {
+                $reportYearLabels[$yr] = $this->formatDueYearHeading($yr);
+            }
+
+            return $this->renderExcelResponse([], [], $cur, $reportYears, $reportYearLabels);
+        }
+
+        return $this->emptyPdfResponse();
+    }
+
+    private function resolvePaymentFollowupOutputType(Request $request): string
+    {
+        $t = strtolower(trim((string) $request->input('type', 'excel')));
+        if (in_array($t, ['excel', 'pdf'], true)) {
+            return $t;
+        }
+
+        return 'excel';
+    }
+
+    private function formatHofPhone(MumineenModel $hof): string
+    {
+        $m = trim((string) ($hof->mobile ?? ''));
+
+        return $m !== '' ? $m : '—';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $blocks
+     * @param array<int, array<string, mixed>> $untagged
+     * @param array{0: string, 1: string, 2: string} $reportYears
+     * @param array<string, string>             $reportYearLabels
+     */
+    private function renderExcelResponse(
+        array $blocks,
+        array $untagged,
+        string $currentYear,
+        array $reportYears,
+        array $reportYearLabels
+    ) {
+        $headings = array_merge(
+            ['SN', 'Establishment / Partner', 'Phone', "Hub ({$currentYear})"],
+            array_map(fn ($yr) => 'Due ' . ($reportYearLabels[$yr] ?? $yr), $reportYears),
+            ['Last payment (amt / date / mode)']
+        );
+
+        $excelRows = [];
+        $sn = 1;
+        foreach ($blocks as $block) {
+            $row = [
+                (string) $sn,
+                $block['establishment_name'],
+                $block['phone'] ?? '—',
+                number_format((int) ($block['hub'] ?? 0)),
+            ];
+            foreach ($reportYears as $i => $_) {
+                $row[] = $block['due_cells'][$i] ?? '—';
+            }
+            $row[] = $block['last_pay'] ?? '—';
+            $excelRows[] = $row;
+            $sn++;
+
+            foreach ($block['partners'] ?? [] as $p) {
+                $prow = [
+                    '',
+                    $p['label'] ?? '',
+                    $p['phone'] ?? '—',
+                    number_format((int) ($p['hub'] ?? 0)),
+                ];
+                foreach ($reportYears as $i => $_) {
+                    $prow[] = $p['due_cells'][$i] ?? '—';
+                }
+                $prow[] = $p['last_pay'] ?? '—';
+                $excelRows[] = $prow;
+            }
+        }
+
+        if ($untagged !== []) {
+            if ($blocks !== []) {
+                $excelRows[] = array_fill(0, count($headings), '');
+            }
+            $titleRow = array_fill(0, count($headings), '');
+            $titleRow[1] = 'Families not linked to any establishment';
+            $excelRows[] = $titleRow;
+            $sn2 = 1;
+            foreach ($untagged as $u) {
+                $urow = [
+                    (string) $sn2,
+                    $u['label'] ?? '',
+                    $u['phone'] ?? '—',
+                    number_format((int) ($u['hub'] ?? 0)),
+                ];
+                foreach ($reportYears as $i => $_) {
+                    $urow[] = $u['due_cells'][$i] ?? '—';
+                }
+                $urow[] = $u['last_pay'] ?? '—';
+                $excelRows[] = $urow;
+                $sn2++;
+            }
+        } elseif ($blocks === [] && $untagged === []) {
+            $msg = array_fill(0, count($headings), '');
+            $msg[1] = 'No active establishments.';
+            $excelRows[] = $msg;
+        }
+
+        $colCount = count($headings);
+        $letters = range('A', 'Z');
+        $align = [
+            'A' => Alignment::HORIZONTAL_CENTER,
+            'B' => Alignment::HORIZONTAL_LEFT,
+            'C' => Alignment::HORIZONTAL_LEFT,
+        ];
+        $lastColIndex = $colCount - 1;
+        $lastLetter = $lastColIndex < 26 ? $letters[$lastColIndex] : 'Z';
+        for ($i = 3; $i < $colCount - 1; $i++) {
+            if ($i < 26) {
+                $align[$letters[$i]] = Alignment::HORIZONTAL_RIGHT;
+            }
+        }
+        $align[$lastLetter] = Alignment::HORIZONTAL_LEFT;
+
+        $export = new GenericExcelExport(
+            $excelRows,
+            $headings,
+            $align
+        );
+
+        return ExcelExportHelper::store($export, 'sabeel', 'payment_followup_establishment');
     }
 
     /**

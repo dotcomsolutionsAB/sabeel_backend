@@ -90,7 +90,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/update/{establishment_id}', [EstablishmentController::class, 'edit']);
         Route::post('/update-verification/{establishment_id}', [EstablishmentController::class, 'updateVerification']);
         Route::delete('/delete/{establishment_id}', [EstablishmentController::class, 'delete']);
-        Route::get('/payment-followup-pdf', [PaymentFollowupPdfController::class, 'establishmentWisePdf']);
+        Route::match(['get', 'post'], '/payment-followup-pdf', [PaymentFollowupPdfController::class, 'establishmentWisePdf']);
     });
 
     // establishment-partner route

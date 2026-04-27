@@ -6,6 +6,7 @@
         <tr>
             <th class="col-sn">SN</th>
             <th class="col-name">Family (HOF)</th>
+            <th class="col-phone">Phone</th>
             <th class="col-hub">Hub ({{ $currentYear }})</th>
             @foreach ($reportYears as $yr)
                 <th class="col-year">Due {{ $reportYearLabels[$yr] ?? $yr }}</th>

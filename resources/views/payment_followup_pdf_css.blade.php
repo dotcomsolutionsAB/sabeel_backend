@@ -48,10 +48,17 @@ table.main td {
     text-align: center;
 }
 .col-name {
-    width: 39.2%;
+    width: 32%;
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
+.col-phone {
+    width: 8.5%;
+    font-size: 8.5px;
+    word-wrap: break-word;
+}
+th.col-phone { text-align: center; }
+td.col-phone { text-align: left; }
 .col-hub {
     width: 3.8%;
     text-align: right;
