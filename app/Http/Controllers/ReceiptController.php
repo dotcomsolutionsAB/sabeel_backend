@@ -139,7 +139,7 @@ class ReceiptController extends Controller
                     $receiptsCreatedInTransaction = $result['receipts_created'];
                     $createdReceipts = array_merge($createdReceipts, $result['receipts']);
                     $remainingAmount -= $result['amount_used'];
-                    // Establishment + cash: only one receipt per day (max 10k); rest goes to advance_paid
+                    // Establishment + cash: only one receipt per day (max 9,500); rest goes to advance_paid
                     if ($type === 'establishment' && !empty($result['receipts'])) {
                         break;
                     }
@@ -283,9 +283,9 @@ class ReceiptController extends Controller
                         continue;
                     }
 
-                    // Establishment + cash: at most 10,000 per run (one receipt per cron run)
+                    // Establishment + cash: at most 9,500 per run (one receipt per cron run)
                     $amountToProcess = ($type === 'establishment' && $mode === 'cash')
-                        ? min($amount, 10000)
+                        ? min($amount, 9500)
                         : $amount;
                     $remainingAmount = $amountToProcess;
                     $entryReceipts = [];
@@ -1151,13 +1151,13 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /**
-     * Check if a person can take an amount without exceeding Rs. 10,000 limit
+     * Check if a person can take an amount without exceeding Rs. 9,500 limit
      * Only considers CASH and ACTIVE receipts
      */
     private function canPersonTakeAmount(string $name, string $date, float $amount, array $receiptsCreatedInTransaction): bool
     {
         $currentTotal = $this->getTotalAmountForPersonOnDate($name, $date, $receiptsCreatedInTransaction);
-        return ($currentTotal + $amount) <= 10000;
+        return ($currentTotal + $amount) <= 9500;
     }
 
     /**
@@ -1198,7 +1198,7 @@ $mpdf = new \Mpdf\Mpdf([
             }
 
             // If couldn't pay full amount to one person, split it
-            if ($amountUsed < $amountToPay && $amountToPay > 10000) {
+            if ($amountUsed < $amountToPay && $amountToPay > 9500) {
                 $remainingToPay = $amountToPay - $amountUsed;
                 $splitResult = $this->splitAmountAcrossMembers(
                     $familyId, $establishmentId, $year, $remainingToPay,
@@ -1208,12 +1208,12 @@ $mpdf = new \Mpdf\Mpdf([
                 $receiptsCreatedInTransaction = $splitResult['receipts_created'];
                 $amountUsed += $splitResult['amount_used'];
             } elseif ($amountUsed < $amountToPay) {
-                // Amount <= 10000 but couldn't assign to one person, try partial
+                // Amount <= 9,500 but couldn't assign to one person, try partial
                 // Try to assign what we can
                 foreach ($members as $member) {
                     if ($amountUsed >= $amountToPay) break;
                     
-                    $available = 10000 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
+                    $available = 9500 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
                     if ($available > 0) {
                         $partialAmount = min($available, $amountToPay - $amountUsed);
                         $receipt = $this->createReceiptForFamilyMember(
@@ -1233,8 +1233,8 @@ $mpdf = new \Mpdf\Mpdf([
                 }
             }
         } else {
-            // For establishments: receipt in establishment name only; at most one receipt (max 10,000) per day
-            $amountToPay = min($amountToPay, 10000);
+            // For establishments: receipt in establishment name only; at most one receipt (max 9,500) per day
+            $amountToPay = min($amountToPay, 9500);
             $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
             if ($est) {
                 $receipt = $this->createReceiptForYear(
@@ -1275,7 +1275,7 @@ $mpdf = new \Mpdf\Mpdf([
         foreach ($members as $member) {
             if ($remaining <= 0) break;
 
-            $available = 10000 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
+            $available = 9500 - $this->getTotalAmountForPersonOnDate($member->name, $date, $receiptsCreatedInTransaction);
             if ($available > 0) {
                 $chunkAmount = min($available, $remaining);
                 if ($chunkAmount >= 100) { // Minimum receipt amount
@@ -1360,7 +1360,7 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /**
-     * Split cash amount into chunks of 9,000-10,000 (multiples of 100)
+     * Split cash amount into chunks of 9,000-9,500 (multiples of 100)
      */
     private function splitCashAmount(float $amount): array
     {
@@ -1368,18 +1368,18 @@ $mpdf = new \Mpdf\Mpdf([
         $remaining = $amount;
 
         while ($remaining > 0) {
-            if ($remaining <= 10000) {
-                // Last chunk - can be any amount <= 10000
+            if ($remaining <= 9500) {
+                // Last chunk - can be any amount <= 9500
                 $chunks[] = $remaining;
                 break;
             } else {
-                // Chunk of 9,000-10,000 (preferably 10,000, but must be multiples of 100)
+                // Chunk of 9,000-9,500 (preferably 9,500, but must be multiples of 100)
                 // Round down to nearest 100, but ensure at least 9000
                 $chunk = floor($remaining / 100) * 100;
-                if ($chunk > 10000) {
-                    $chunk = 10000;
+                if ($chunk > 9500) {
+                    $chunk = 9500;
                 } elseif ($chunk < 9000) {
-                    $chunk = 10000;
+                    $chunk = 9500;
                 }
                 $chunks[] = $chunk;
                 $remaining -= $chunk;
@@ -1514,7 +1514,7 @@ $mpdf = new \Mpdf\Mpdf([
     }
 
     /**
-     * Create cash split receipts (for amounts > 10,000)
+     * Create cash split receipts (for amounts > 9,500)
      */
     private function createCashSplitReceipts(string $type, ?int $familyId, ?int $establishmentId, string $year, float $amount, Request $request, string $date): array
     {
@@ -1543,10 +1543,10 @@ $mpdf = new \Mpdf\Mpdf([
                 }
             }
         } else {
-            // For establishments: establishment name only; at most one receipt (max 10,000) per day
+            // For establishments: establishment name only; at most one receipt (max 9,500) per day
             $est = EstablishmentModel::where('establishment_id', $establishmentId)->first();
             if ($est) {
-                $chunk = min($amount, 10000);
+                $chunk = min($amount, 9500);
                 if (!$this->checkReceiptExistsForNameAndDate($est->name, $date)) {
                     $receipt = $this->createReceiptForYear($type, $familyId, $establishmentId, $year, $chunk, $request, $date);
                     if ($receipt) {
