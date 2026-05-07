@@ -188,6 +188,7 @@ class DashboardController extends Controller
             $manufacturer = EstablishmentModel::where('type', 'manufacturer')->count();
 
             return $this->success('Dashboard data fetched', [
+                'current_year' => (string) $currentYearStr,
                 'mumineen' => [
                     'total_houses'         => (string) $totalHouses,
                     'external_houses'      => (string) $externalHouses,
