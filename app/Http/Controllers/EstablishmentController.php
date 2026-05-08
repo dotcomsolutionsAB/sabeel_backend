@@ -66,7 +66,7 @@ class EstablishmentController extends Controller
      * List is sorted by name (A–Z).
      * Body:
      * {
-     *   "search": "",
+     *   "search": "", // searches only establishment name
      *   "filter": "due|prev_due|new_takhmeen_pending|not_tagged|manufacturer",
      *   "alphabet": "A"|"B"|...|"Z" or "Others" (names not starting with A–Z),
      *   "limit": 10,
@@ -119,20 +119,9 @@ class EstablishmentController extends Controller
                 ->select($selectFields)
                 ->orderBy('name','asc');
 
-            // Smart search: in establishment name/address/establishment_id AND partner mumineen (its/name/sector) AND family member its
+            // Search only in establishment name
             if ($search !== '') {
-                $this->applySmartSearch($q, $search, ['name', 'address', 'establishment_id'], function ($query, $keyword) {
-                    $query->orWhereExists(function($sub) use ($keyword) {
-                          $sub->from('t_mumineen_establishment as me')
-                              ->join('t_mumineen as m', 'm.family_id', '=', 'me.family_id')
-                              ->whereColumn('me.establishment_id', 't_establishment.establishment_id')
-                            ->where(function($x) use ($keyword) {
-                                $x->where('m.its', 'like', "%{$keyword}%")
-                                  ->orWhere('m.name', 'like', "%{$keyword}%")
-                                  ->orWhere('m.sector', 'like', "%{$keyword}%");
-                              });
-                      });
-                });
+                $q->where('name', 'like', '%' . $search . '%');
             }
 
             // Filter by is_verified (only if column exists)
@@ -150,13 +139,13 @@ class EstablishmentController extends Controller
                 $q = $this->applyFilter($q, $filter, $currentYear, $prevYear);
             }
 
-            // Alphabet filter: single letter (A–Z) or "Others" for names not starting with a letter
+            // Alphabet filter: single letter (A-Z) as starts-with, or "Others" for names not starting with A-Z
             if ($alphabet !== '') {
                 if (strtolower($alphabet) === 'others') {
-                    $q->whereRaw('LOWER(LEFT(TRIM(name), 1)) NOT BETWEEN ? AND ?', ['a', 'z']);
+                    $q->whereRaw('LOWER(TRIM(name)) NOT REGEXP ?', ['^[a-z]']);
                 } else {
                     $letter = substr($alphabet, 0, 1);
-                    $q->whereRaw('LOWER(LEFT(TRIM(name), 1)) = ?', [strtolower($letter)]);
+                    $q->whereRaw('LOWER(TRIM(name)) LIKE ?', [strtolower($letter) . '%']);
                 }
             }
 
