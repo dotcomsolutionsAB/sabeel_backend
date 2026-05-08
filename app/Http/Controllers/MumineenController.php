@@ -1214,6 +1214,42 @@ class MumineenController extends Controller
     }
 
     /**
+     * Close family sabeel (mark whole family closed)
+     * POST /family/close-sabeel/{family_id}
+     */
+    public function closeSabeel($family_id)
+    {
+        try {
+            $familyId = (int) $family_id;
+
+            $hof = MumineenModel::where('family_id', $familyId)
+                ->where('hof_type', 'HOF')
+                ->first();
+
+            if (!$hof) {
+                return $this->error('Family not found.', 404);
+            }
+
+            if (strtolower((string) $hof->status) === 'closed') {
+                return $this->success('Family sabeel is already closed.', [
+                    'family_id' => (string) $familyId,
+                    'status' => 'closed',
+                ], 200);
+            }
+
+            // Close all rows for this family (HOF + members) to keep data consistent.
+            MumineenModel::where('family_id', $familyId)->update(['status' => 'closed']);
+
+            return $this->success('Family sabeel closed successfully.', [
+                'family_id' => (string) $familyId,
+                'status' => 'closed',
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Close family sabeel failed');
+        }
+    }
+
+    /**
      * Generate Sector Due PDF
      * GET /family/sector-due-pdf/{sector}
      * Example: /family/sector-due-pdf/BURHANI

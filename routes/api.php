@@ -61,6 +61,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [MumineenController::class, 'fetch']);
         Route::post('/update/{family_id}', [MumineenController::class, 'edit']);
         Route::post('/update-verification/{family_id}', [MumineenController::class, 'updateVerification']);
+        Route::post('/close-sabeel/{family_id}', [MumineenController::class, 'closeSabeel']);
         Route::delete('/delete/{id}', [MumineenController::class, 'delete']);
         Route::post('/export', [MumineenController::class, 'export']);
         Route::get('/sync_image', [MumineenController::class, 'syncAllPhotos']);
