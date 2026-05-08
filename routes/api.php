@@ -90,6 +90,7 @@ Route::middleware('auth:sanctum', 'role:admin,user')->group(function () {
         Route::post('/retrieve/{id?}', [EstablishmentController::class, 'fetch']);
         Route::post('/update/{establishment_id}', [EstablishmentController::class, 'edit']);
         Route::post('/update-verification/{establishment_id}', [EstablishmentController::class, 'updateVerification']);
+        Route::post('/close-sabeel/{establishment_id}', [EstablishmentController::class, 'closeSabeel']);
         Route::delete('/delete/{establishment_id}', [EstablishmentController::class, 'delete']);
         Route::match(['get', 'post'], '/payment-followup-pdf', [PaymentFollowupPdfController::class, 'establishmentWisePdf']);
     });

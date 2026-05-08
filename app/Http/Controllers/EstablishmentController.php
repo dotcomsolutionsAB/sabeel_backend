@@ -117,6 +117,7 @@ class EstablishmentController extends Controller
 
             $q = EstablishmentModel::query()
                 ->select($selectFields)
+                ->where('status', 'active')
                 ->orderBy('name','asc');
 
             // Search only in establishment name
@@ -644,6 +645,37 @@ class EstablishmentController extends Controller
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Verification update failed');
+        }
+    }
+
+    /**
+     * Close establishment sabeel (mark establishment closed)
+     * POST /establishment/close-sabeel/{establishment_id}
+     */
+    public function closeSabeel($establishment_id)
+    {
+        try {
+            $establishment = EstablishmentModel::where('establishment_id', (string) $establishment_id)->first();
+
+            if (!$establishment) {
+                return $this->error('Establishment not found.', 404);
+            }
+
+            if (strtolower((string) $establishment->status) === 'closed') {
+                return $this->success('Establishment sabeel is already closed.', [
+                    'establishment_id' => (string) $establishment->establishment_id,
+                    'status' => 'closed',
+                ], 200);
+            }
+
+            $establishment->update(['status' => 'closed']);
+
+            return $this->success('Establishment sabeel closed successfully.', [
+                'establishment_id' => (string) $establishment->establishment_id,
+                'status' => 'closed',
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Close establishment sabeel failed');
         }
     }
 }
