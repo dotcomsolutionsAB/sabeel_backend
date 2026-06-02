@@ -830,6 +830,7 @@ class ReceiptController extends Controller
                     $sn++,
                     $r->receipt_no,
                     optional($r->date)->format('d-m-Y'),
+                    (string) ($r->year ?? ''),
                     $r->name,
                     $typeLabel,
                     $estName,
@@ -851,6 +852,7 @@ class ReceiptController extends Controller
                 'SN',
                 'Receipt No',
                 'Date',
+                'Year',
                 'Name',
                 'Type',
                 'Est. Name',
@@ -893,23 +895,24 @@ class ReceiptController extends Controller
                 'A' => Alignment::HORIZONTAL_CENTER, // SN
                 'B' => Alignment::HORIZONTAL_CENTER, // Receipt No
                 'C' => Alignment::HORIZONTAL_CENTER, // Date
-                'D' => Alignment::HORIZONTAL_LEFT,   // Name
-                'E' => Alignment::HORIZONTAL_CENTER, // Type
-                'F' => Alignment::HORIZONTAL_LEFT,   // Est. Name
-                'G' => Alignment::HORIZONTAL_RIGHT,  // Amount
-                'H' => Alignment::HORIZONTAL_CENTER, // Mode
-                'I' => Alignment::HORIZONTAL_LEFT,   // Bank
-                'J' => Alignment::HORIZONTAL_CENTER, // Cheque No
-                'K' => Alignment::HORIZONTAL_CENTER, // Cheque Date
-                'L' => Alignment::HORIZONTAL_CENTER, // Transaction No
-                'M' => Alignment::HORIZONTAL_CENTER, // Transaction Date
-                'N' => Alignment::HORIZONTAL_CENTER, // Status
+                'D' => Alignment::HORIZONTAL_CENTER, // Year
+                'E' => Alignment::HORIZONTAL_LEFT,   // Name
+                'F' => Alignment::HORIZONTAL_CENTER, // Type
+                'G' => Alignment::HORIZONTAL_LEFT,   // Est. Name
+                'H' => Alignment::HORIZONTAL_RIGHT,  // Amount
+                'I' => Alignment::HORIZONTAL_CENTER, // Mode
+                'J' => Alignment::HORIZONTAL_LEFT,   // Bank
+                'K' => Alignment::HORIZONTAL_CENTER, // Cheque No
+                'L' => Alignment::HORIZONTAL_CENTER, // Cheque Date
+                'M' => Alignment::HORIZONTAL_CENTER, // Transaction No
+                'N' => Alignment::HORIZONTAL_CENTER, // Transaction Date
+                'O' => Alignment::HORIZONTAL_CENTER, // Status
             ],
             null, // ✅ totalLabelColumn (not needed)
             [
-                'L' => NumberFormat::FORMAT_TEXT, // ✅ Transaction No as TEXT
+                'M' => NumberFormat::FORMAT_TEXT, // ✅ Transaction No as TEXT
                 // optional (if you want these also as text):
-                // 'J' => NumberFormat::FORMAT_TEXT, // Cheque No
+                // 'K' => NumberFormat::FORMAT_TEXT, // Cheque No
                 // 'B' => NumberFormat::FORMAT_TEXT, // Receipt No
             ]
         );
