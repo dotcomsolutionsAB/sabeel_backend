@@ -45,48 +45,127 @@ class MumineenController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'its'        => 'required|string|max:255|unique:t_mumineen,its',
-                'name'       => 'required|string|max:255',
-                'gender'     => 'required|in:male,female',
-
-                'sector'     => 'nullable|string|max:255',
-                'sub_sector' => 'nullable|string|max:255',
-                'mobile'     => 'nullable|string|max:255',
-                'email'      => 'nullable|email|max:255',
+                'its'              => 'required|string|max:255',
+                'name'             => 'required|string|max:255',
+                'gender'           => 'required|in:male,female',
+                'sector'           => 'nullable|string|max:255',
+                'sub_sector'       => 'nullable|string|max:255',
+                'mobile'           => 'nullable|string|max:255',
+                'email'            => 'nullable|email|max:255',
+                'promote_fm_to_hof'=> 'nullable|boolean',
             ]);
 
             if ($validator->fails()) {
                 return $this->validation($validator);
             }
 
-            $familyId = $this->generateUniqueFamilyId();
+            $its = trim((string) $request->its);
+            $promoteFmToHof = $request->boolean('promote_fm_to_hof');
 
-            $row = MumineenModel::create([
-                'family_id'  => $familyId,
-                'hof_type'   => 'HOF',
+            if ($promoteFmToHof) {
+                return $this->promoteFmToHof($request, $its);
+            }
 
-                'its'        => $request->its,
-                'hof_its'    => null,
-                'family_its' => null,
+            $existing = MumineenModel::where('its', $its)->first();
+            if ($existing) {
+                if (strtoupper((string) $existing->hof_type) === 'HOF') {
+                    return $this->error('ITS is already registered as Head of Family.', 422);
+                }
+                if (strtoupper((string) $existing->hof_type) === 'FM') {
+                    return $this->error(
+                        'This ITS already exists as a family member (FM).',
+                        409,
+                        [
+                            'reason' => 'fm_exists',
+                            'data'   => [
+                                'its'    => (string) $existing->its,
+                                'name'   => (string) ($existing->name ?? ''),
+                                'gender' => (string) ($existing->gender ?? ''),
+                            ],
+                        ]
+                    );
+                }
+                return $this->error('ITS is already registered.', 422);
+            }
 
-                'name'       => $request->name,
-                'sector'     => $request->sector ?? null,
-                'sub_sector' => $request->sub_sector ?? null,
-
-                'mobile'     => $request->mobile ?? null,
-                'email'      => $request->email ?? null,
-
-                'gender'     => $request->gender,
-                'age'        => null,
-
-                'status'     => 'active',
-            ]);
+            $row = $this->createHofRow($request, $its, $this->generateUniqueFamilyId());
 
             return $this->success('Data saved successfully', $row, 200);
 
         } catch (\Throwable $e) {
             return $this->serverError($e, 'Mumineen create failed');
         }
+    }
+
+    /**
+     * Promote an existing FM row to HOF with a new family_id.
+     */
+    private function promoteFmToHof(Request $request, string $its)
+    {
+        $fm = MumineenModel::where('its', $its)
+            ->where('hof_type', 'FM')
+            ->first();
+
+        if (!$fm) {
+            return $this->error('No family member (FM) found with this ITS to promote.', 404);
+        }
+
+        if (strtolower((string) $fm->status) === 'closed') {
+            return $this->error('This family member is closed and cannot be promoted.', 422);
+        }
+
+        $familyId = $this->generateUniqueFamilyId();
+        $picUrl = $this->resolveMumineenPicUrl($its);
+
+        $fm->update([
+            'family_id'  => $familyId,
+            'hof_type'   => 'HOF',
+            'hof_its'    => null,
+            'family_its' => null,
+            'name'       => $request->name,
+            'sector'     => $request->sector ?? null,
+            'sub_sector' => $request->sub_sector ?? null,
+            'mobile'     => $request->mobile ?? null,
+            'email'      => $request->email ?? null,
+            'gender'     => $request->gender,
+            'age'        => null,
+            'pic'        => $picUrl,
+            'status'     => 'active',
+            'external'   => false,
+        ]);
+
+        return $this->success('Family member promoted to Head of Family successfully', $fm->fresh(), 200);
+    }
+
+    private function createHofRow(Request $request, string $its, int $familyId): MumineenModel
+    {
+        return MumineenModel::create([
+            'family_id'  => $familyId,
+            'hof_type'   => 'HOF',
+            'its'        => $its,
+            'hof_its'    => null,
+            'family_its' => null,
+            'name'       => $request->name,
+            'sector'     => $request->sector ?? null,
+            'sub_sector' => $request->sub_sector ?? null,
+            'mobile'     => $request->mobile ?? null,
+            'email'      => $request->email ?? null,
+            'gender'     => $request->gender,
+            'age'        => null,
+            'pic'        => $this->resolveMumineenPicUrl($its),
+            'status'     => 'active',
+            'external'   => false,
+        ]);
+    }
+
+    private function resolveMumineenPicUrl(string $its): string
+    {
+        $picUrl = url('storage/uploads/its_images/placeholder.jpg');
+        $itsImagePath = public_path('storage/uploads/its_images/' . $its . '.jpg');
+        if (file_exists($itsImagePath)) {
+            $picUrl = url('storage/uploads/its_images/' . $its . '.jpg');
+        }
+        return $picUrl;
     }
 
     /**
