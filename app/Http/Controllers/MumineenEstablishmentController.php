@@ -141,11 +141,19 @@ class MumineenEstablishmentController extends Controller
     /**
      * DELETE
      * DELETE /partners/delete/{id}
+     * Optional query: establishment_id — used to resolve link by ITS if id is not a link row id
      */
-    public function delete($id)
+    public function delete(Request $request, $id)
     {
         try {
             $row = MumineenEstablishmentModel::find($id);
+
+            if (!$row && $request->filled('establishment_id')) {
+                $row = MumineenEstablishmentModel::where('establishment_id', (int) $request->query('establishment_id'))
+                    ->where('its', (string) $id)
+                    ->first();
+            }
+
             if (!$row) {
                 return $this->error('Record not found.', 404);
             }

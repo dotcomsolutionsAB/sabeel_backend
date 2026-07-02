@@ -301,6 +301,7 @@ class EstablishmentController extends Controller
                 if (!$hof) continue;
 
                 $partners[] = [
+                    'id'     => (string) $lnk->id,
                     // 'url'    => "https://talabulilm.com/mumin_images/{$hof->its}.png",
                     'url'    => $hof->pic,
                     'name'   => (string) ($hof->name ?? ''),
@@ -548,6 +549,7 @@ class EstablishmentController extends Controller
                 if (!$hof) continue;
 
                 $partners[] = [
+                    'id'     => (string) $lnk->id,
                     // 'url'    => "https://talabulilm.com/mumin_images/{$hof->its}.png",
                     'url'    => $hof->pic,
                     'name'   => (string) ($hof->name ?? ''),
