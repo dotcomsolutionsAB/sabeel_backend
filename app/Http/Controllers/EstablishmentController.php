@@ -182,8 +182,8 @@ class EstablishmentController extends Controller
             $validator = Validator::make($request->all(), [
                 'name'    => 'required|string|max:255',
                 'address' => 'required|string',
-                'status'  => 'required|in:active,closed',
-                'type'    => 'required|in:business,manufacturer',
+                'status'  => 'nullable|in:active,closed',
+                'type'    => 'nullable|in:business,manufacturer',
                 'remarks' => 'nullable|string',
             ]);
 
@@ -191,13 +191,21 @@ class EstablishmentController extends Controller
                 return $this->validation($validator);
             }
 
-            $est->update([
+            $updateData = [
                 'name'    => $request->name,
                 'address' => $request->address,
-                'status'  => $request->status,
-                'type'    => $request->type,
-                'remarks' => $request->remarks ?? null,
-            ]);
+            ];
+            if ($request->has('status')) {
+                $updateData['status'] = $request->status;
+            }
+            if ($request->has('type')) {
+                $updateData['type'] = $request->type;
+            }
+            if ($request->has('remarks')) {
+                $updateData['remarks'] = $request->remarks;
+            }
+
+            $est->update($updateData);
 
             return $this->success('Data saved successfully', $est, 200);
 
