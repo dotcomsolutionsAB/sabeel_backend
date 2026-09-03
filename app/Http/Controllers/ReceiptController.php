@@ -231,12 +231,13 @@ class ReceiptController extends Controller
             // Get date (default to current date)
             $processDate = $request->input('date', now()->toDateString());
 
-            // Get pending entries: for this date, plus pending establishment+cash (any date) for one-receipt-per-run
+            // Get pending entries: for this date, plus pending cash (family or establishment, any date)
+            // so personal and establishment advances keep converting across daily 9,500 limits
             $entries = AdvancePaidModel::where('status', 'pending')
                 ->where(function ($q) use ($processDate) {
                     $q->whereDate('date', $processDate)
                         ->orWhere(function ($q2) {
-                            $q2->where('type', 'establishment')->where('mode', 'cash');
+                            $q2->whereIn('type', ['family', 'establishment'])->where('mode', 'cash');
                         });
                 })
                 ->get();
