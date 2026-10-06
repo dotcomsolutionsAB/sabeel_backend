@@ -499,6 +499,7 @@ class ReceiptController extends Controller
      *   "family_id": null,
      *   "establishment_id": null,
      *   "mode": "cash|cheque|neft",
+     *   "search": "name, ITS, or receipt no",
      *   "date_from":"YYYY-MM-DD",
      *   "date_to":"YYYY-MM-DD",
      *   "limit":10,
@@ -525,6 +526,8 @@ class ReceiptController extends Controller
                 'establishment_id' => 'nullable|integer',
 
                 'mode' => 'nullable|in:cash,cheque,neft',
+
+                'search' => 'nullable|string|max:100',
 
                 'date_from' => 'nullable|date',
                 'date_to'   => 'nullable|date',
@@ -569,6 +572,16 @@ class ReceiptController extends Controller
 
             if ($request->filled('mode')) {
                 $q->where('mode', $request->mode);
+            }
+
+            $search = trim((string) $request->input('search', ''));
+            if ($search !== '') {
+                $like = '%' . addcslashes($search, '%_\\') . '%';
+                $q->where(function ($query) use ($like) {
+                    $query->where('name', 'like', $like)
+                        ->orWhere('its', 'like', $like)
+                        ->orWhere('receipt_no', 'like', $like);
+                });
             }
 
             if ($request->filled('date_from')) {
